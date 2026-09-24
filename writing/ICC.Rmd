@@ -9,17 +9,21 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
+
 ```{r}
 library(readxl)
 library(dplyr)
 library(tidyr)
 library(psych)
+library(lme4)
 ```
+
 
 ```{r}
 # Read Excel
 dat <- read_excel("data/Book1.xlsx")
 ```
+
 
 ```{r}
 # Calculate total DPAS score (sum of the 44 items)
@@ -43,6 +47,7 @@ icc_result <- ICC(icc_matrix)
 print(icc_result)
 ```
 
+
 ```{r}
 library(psych)
 
@@ -63,11 +68,13 @@ region_score <- function(start, end){
 region_score(3,13)
 ```
 
+
 ```{r}
 result <- region_score(3,13)
 
 result$results["Single_random_raters", ]
 ```
+
 
 ```{r}
 result$results

@@ -1,0 +1,184 @@
+---
+title: "DPAS Reproducibility Thesis"
+author: "Lian Rui"
+date: "2026-09-24"
+output: html_document
+editor_options: 
+  chunk_output_type: inline
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Packgages
+
+```{r}
+# packages
+library(tidyverse)
+library(readxl)
+library(dplyr)
+library(tidyr)
+library(psych) # ICC
+library(ggplot2)
+library(colorspace)
+library(showtext)
+showtext_auto()
+library(GWalkR) # Tabuleu like, TODO: furrther explore
+library(DataExplorer)
+library(gtsummary) # Table 1
+library(kableExtra)
+```
+
+
+## Background
+
+## Methods
+
+## Getting data
+
+```{r data import}
+path <- "~/DPAS Reproducibility/data"
+
+# Import the DPAS48.xlsx
+DPAS <- read_excel(paste0(path, "/", "DPAS48.xlsx"))
+
+pt_info <- read_excel(paste0(path, "/", "DPAS48_pt_info.xls"))
+```
+
+## Cleaning data
+
+```{r clean DPAS}
+# The column names are in Chinese
+# Translate to English as below: 
+# 患者：Patient_id
+# 监察人：Rater1, Rater12, Rater13, Rater14
+# 前额: Forehead
+# 右颊: Right cheek
+# 左颊：Left cheek
+# 下颌：Chin
+
+DPAS <- DPAS |>
+  rename("Patient_id" = "患者",
+         "Rater" = "监察人")
+
+# Use dplyr to change column names by pattern match in batch
+# e.g., 额1 to 额11 as Forehead1 to forehead 11
+DPAS <- DPAS |>
+  rename_with(
+    ~paste0("Forehead", sub("^额", "", .x)), 
+    matches("^额\\d+$")
+  )
+
+DPAS <- DPAS |>
+  rename_with(
+    ~paste0("Right_cheek", sub("^右", "", .x)), 
+    matches("^右\\d+$")
+  )
+
+DPAS <- DPAS |>
+  rename_with(
+    ~paste0("Left_cheek", sub("^左", "", .x)), 
+    matches("^左\\d+$")
+  )
+
+DPAS <- DPAS |>
+  rename_with(
+    ~paste0("Chin", sub("^下", "", .x)), 
+    matches("^下\\d+$")
+  )
+## TODO: a function to replace the four repeated action above!
+
+# DPAS to long format
+# Patient_id and Rater unchanged
+DPAS <- DPAS |>
+  pivot_longer(cols = 3:ncol(DPAS), 
+               names_to = "Position_metric", 
+               values_to = "score")
+
+# Separate column `Position_metric` into two columns
+# one column of position and another position of metrics 1 to 11
+DPAS <- DPAS |>
+  separate(
+    Position_metric, 
+    into = c("Position", "Metric"), 
+    sep = "(?<=\\D)(?=\\d)", 
+    convert = TRUE
+  )
+
+```
+
+
+```{r Cleaning pt_info}
+# Change columns into English
+# 姓名: Patient_id
+# 性别: Sex
+# 年龄：Age
+pt_info <- pt_info |>
+  rename(
+    "Patient_id" = "姓名",
+    "Sex" = "性别",
+    "Age" = "年龄"
+  )
+
+# change Sex value: 
+# 男: Male
+# 女: Female
+pt_info <- pt_info |>
+  mutate(
+    Sex = case_when(
+      Sex == "男" ~ "Male", 
+      Sex == "女" ~ "Female" 
+    )
+  )
+```
+
+
+```{r Merging}
+# Merge table pt_info with table DPAS
+dat <- pt_info |>
+  left_join(DPAS, by = join_by("Patient_id"))
+```
+
+## TODO: other patient demographic, co-morbidity info maybe included
+
+## Exploratory Analysis
+
+### Table 1
+
+```{r Table 1}
+# Exposure var
+library(gtsummary)
+library(kableExtra)
+
+table1_df <- dat |>
+  dplyr::select(Patient_id, Sex, Age) |>
+  dplyr::distinct(Patient_id, .keep_all = TRUE) |>
+  gtsummary::tbl_summary(
+    by = Sex,
+    include = Age,
+    statistic = list(
+      all_continuous() ~ "{mean} ({sd})"
+    ),
+    missing = "ifany"
+  ) |>
+  gtsummary::add_p() |>
+  tibble::as_tibble()
+
+table1_df
+```
+
+
+### GWalkR
+some exploratory analysis of raw data , any interactive package in R to explore dara with shiny
+
+```{r GWalKR app }
+gwalkr(data = dat)
+```
+
+#### age - score
+
+#### Many plot and assumption
+
+
+
