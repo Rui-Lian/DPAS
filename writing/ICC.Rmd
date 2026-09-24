@@ -1,0 +1,75 @@
+---
+title: "ICC"
+author: "Lian Rui"
+date: "2026-07-18"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(readxl)
+library(dplyr)
+library(tidyr)
+library(psych)
+```
+
+```{r}
+# Read Excel
+dat <- read_excel("data/Book1.xlsx")
+```
+
+```{r}
+# Calculate total DPAS score (sum of the 44 items)
+dat$total_score <- rowSums(dat[,3:ncol(dat)])
+
+# Convert to wide format
+icc_data <- dat %>%
+  select(患者, 监察人, total_score) %>%
+  pivot_wider(
+    names_from = 监察人,
+    values_from = total_score,
+    names_prefix = "Rater"
+  )
+
+# Remove patient ID
+icc_matrix <- icc_data[, -1]
+
+# ICC analysis
+icc_result <- ICC(icc_matrix)
+
+print(icc_result)
+```
+
+```{r}
+library(psych)
+
+region_score <- function(start, end){
+
+  dat$temp <- rowSums(dat[, start:end])
+
+  tmp <- dat |>
+    select(患者, 监察人, temp) |>
+    pivot_wider(
+      names_from = 监察人,
+      values_from = temp
+    )
+
+  ICC(tmp[, -1])
+}
+
+region_score(3,13)
+```
+
+```{r}
+result <- region_score(3,13)
+
+result$results["Single_random_raters", ]
+```
+
+```{r}
+result$results
+```
+

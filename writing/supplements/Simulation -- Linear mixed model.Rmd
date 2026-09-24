@@ -1,0 +1,246 @@
+---
+title: "Untitled"
+author: "Lian Rui"
+date: "2026-07-29"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r cars}
+summary(cars)
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+
+```{r}
+# app.R
+
+library(shiny)
+library(tidyverse)
+
+ui <- fluidPage(
+
+  titlePanel("Fixed Effect vs Random Effect Simulation"),
+
+  sidebarLayout(
+
+    sidebarPanel(
+
+      sliderInput(
+        "fixed",
+        "Fixed effect difference between groups:",
+        min = 0,
+        max = 30,
+        value = 10
+      ),
+      helpText(
+        "Fixed effect: controls the systematic difference between predefined groups. ",
+        "Increasing this value separates the mean scores of Group A, B, and C."
+      ),
+
+
+      sliderInput(
+        "random",
+        "Random effect SD (e.g., hospital/rater variation):",
+        min = 0,
+        max = 20,
+        value = 5
+      ),
+      helpText(
+        "Random effect: controls variability among sampled random levels ",
+        "(e.g., raters or hospitals). Higher values indicate greater between-level variation."
+      ),
+
+
+      sliderInput(
+        "error",
+        "Residual error SD:",
+        min = 1,
+        max = 20,
+        value = 5
+      ),
+      helpText(
+        "Residual error: individual-level unexplained variation. ",
+        "It represents measurement noise and within-group variability."
+      ),
+
+
+      sliderInput(
+        "n",
+        "Observations per group:",
+        min = 10,
+        max = 100,
+        value = 30
+      ),
+      helpText(
+        "Controls sample size. Larger samples produce more stable estimates of group means."
+      )
+
+    ),
+
+
+    mainPanel(
+
+      plotOutput(
+        "plot",
+        height = "600px"
+      ),
+
+      hr(),
+
+      h4("Model structure"),
+
+      p(
+        "Y = μ + Fixed effect + Random effect + Residual error"
+      ),
+
+      p(
+        "Fixed effect: predefined groups (e.g., treatment/site/metric)."
+      ),
+
+      p(
+        "Random effect: sampled levels from a population (e.g., rater/patient/hospital)."
+      )
+
+    )
+  )
+)
+
+
+
+server <- function(input, output, session){
+
+
+  dat <- reactive({
+
+    set.seed(123)
+
+
+    # Fixed effect:
+    # Three predefined groups
+    groups <- tibble(
+      Group = c("A", "B", "C"),
+      Fixed = c(
+        0,
+        input$fixed,
+        2 * input$fixed
+      )
+    )
+
+
+    # Random effect:
+    # Five sampled levels from a population
+    random_effect <- tibble(
+      RandomGroup = paste0("R", 1:5),
+      Random = rnorm(
+        5,
+        mean = 0,
+        sd = input$random
+      )
+    )
+
+
+    # Generate observations
+    expand_grid(
+      Group = groups$Group,
+      RandomGroup = random_effect$RandomGroup,
+      id = 1:input$n
+    ) %>%
+
+      left_join(
+        groups,
+        by = "Group"
+      ) %>%
+
+      left_join(
+        random_effect,
+        by = "RandomGroup"
+      ) %>%
+
+      mutate(
+
+        Score =
+          50 +
+          Fixed +
+          Random +
+          rnorm(
+            n(),
+            mean = 0,
+            sd = input$error
+          )
+
+      )
+
+  })
+
+
+
+  output$plot <- renderPlot({
+
+    ggplot(
+      dat(),
+      aes(
+        x = Group,
+        y = Score,
+        color = RandomGroup
+      )
+    ) +
+
+      geom_jitter(
+        width = 0.15,
+        alpha = 0.35,
+        size = 2
+      ) +
+
+      stat_summary(
+        fun = mean,
+        geom = "point",
+        size = 5,
+        color = "black"
+      ) +
+
+      theme_classic(
+        base_size = 14
+      ) +
+
+      labs(
+
+        title = "Fixed Effects + Random Effects Simulation",
+
+        subtitle =
+          "Black dots = fixed group means | Colors = random-effect deviations",
+
+        x = "Fixed-effect groups",
+
+        y = "Observed outcome"
+
+      )
+
+  })
+
+}
+
+
+shinyApp(
+  ui = ui,
+  server = server
+)
+```
+

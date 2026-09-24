@@ -1,0 +1,406 @@
+---
+title: "Simulation -- ICC and Linear Mixed Model are Same Thing"
+author: "Lian Rui"
+date: "2026-07-31"
+output: html_document
+editor_options: 
+  chunk_output_type: inline
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Background
+
+A numeric simulation example in R to show the ICC results fro pysch package can be reproduced using linear mixed model and interpret the results from the two approach. 
+
+## Setup
+
+- 30 patients
+- 3 raters
+- patient SD = 2
+- residual SD = 1
+- no systematic rater bias
+
+The model is 
+
+$$
+Y_{ij} = \mu + P_i + e_{ij}
+$$
+
+where 
+
+$$
+P_i \sim N(0, \sigma_P^2)
+$$ 
+and 
+
+$$
+e_{ij} \sim N(0, \sigma_e^2)
+$$  
+
+## Generate data
+
+```{r}
+library(tidyverse)
+
+set.seed(123)
+
+n_patient <- 30
+n_rater   <- 3
+
+sigma_patient <- 2
+sigma_error   <- 1
+
+patient_effect <-
+  rnorm(n_patient,0,sigma_patient)
+
+dat <-
+  expand.grid(
+    Patient=factor(1:n_patient),
+    Rater=factor(1:n_rater)
+  )
+
+dat$Score <-
+  10 +
+  patient_effect[dat$Patient] +
+  rnorm(nrow(dat),0,sigma_error)
+
+head(dat)
+```
+
+## Compute ICC using psych package
+
+```{r}
+library(tidyr)
+library(psych)
+
+wide <-
+  dat |>
+  pivot_wider(
+    names_from=Rater,
+    values_from=Score
+  )
+
+ICC(wide[,-1])
+```
+
+### psych package reports many ICCS
+
+| ICC   | Meaning             |
+| ----- | ------------------- |
+| ICC1  | One-way random      |
+| ICC2  | Two-way random      |
+| ICC3  | Two-way mixed       |
+| ICC2k | Average of k raters |
+
+#### Formula and summary of the six
+
+| ICC      | ANOVA model    | Model equation                                                        | `lmer()` formula                            | Interpretation                                                                                                        |
+| -------- | -------------- | --------------------------------------------------------------------- | ------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| ICC(1,1) | One-way random | (Score_{ij}=\mu+Patient_i+\epsilon_{ij})                              | `Score ~ 1 + (1 \| Patient)`                | Reliability of a single rating; raters are not modeled separately and rater variability is included in residual error |
+| ICC(1,k) | One-way random | (Score_{ij}=\mu+Patient_i+\epsilon_{ij})                              | `Score ~ 1 + (1 \| Patient)`                | Reliability of the average score from k raters                                                                        |
+| ICC(2,1) | Two-way random | (Score_{ij}=\mu+Patient_i+Rater_j+(Patient:Rater)*{ij}+\epsilon*{ij}) | `Score ~ 1 + (1 \| Patient) + (1 \| Rater)` | Single-rater absolute agreement; differences among raters are considered measurement error                            |
+| ICC(2,k) | Two-way random | (Score_{ij}=\mu+Patient_i+Rater_j+(Patient:Rater)*{ij}+\epsilon*{ij}) | `Score ~ 1 + (1 \| Patient) + (1 \| Rater)` | Average of k raters; absolute agreement                                                                               |
+| ICC(3,1) | Two-way mixed  | (Score_{ij}=\mu+Patient_i+Rater_j+\epsilon_{ij})                      | `Score ~ Rater + (1 \| Patient)`            | Single-rater consistency; systematic differences among these specific raters are ignored                              |
+| ICC(3,k) | Two-way mixed  | (Score_{ij}=\mu+Patient_i+Rater_j+\epsilon_{ij})                      | `Score ~ Rater + (1 \| Patient)`            | Average of k raters; consistency among these specific raters                                                          |
+
+
+
+## Fit the same data using LMM
+
+```{r}
+library(lme4)
+# Fit the same data using LMM
+library(lme4)
+
+fit <-
+  lmer(
+    Score ~ 1 +
+      (1|Patient),
+    data=dat
+  )
+
+summary(fit)
+
+VarCorr(fit)
+```
+
+### Compute ICC manually
+
+```{r}
+vc <- as.data.frame(VarCorr(fit))
+
+sigma_patient <- vc$vcov[1]
+sigma_error   <- vc$vcov[2]
+
+ICC_lmm <-
+  sigma_patient/
+  (sigma_patient+sigma_error)
+
+ICC_lmm
+```
+## Summary Connect the psych package and LMM
+
+| ANOVA (psych)           | Linear Mixed Model                    |
+| ----------------------- | ------------------------------------- |
+| Patient mean square     | Patient random-effect variance        |
+| Residual mean square    | Residual variance                     |
+| ICC formula             | Variance partition coefficient        |
+| F test                  | Likelihood/Wald test                  |
+| Balanced data preferred | Handles unbalanced data naturally     |
+| Produces ICC directly   | ICC computed from estimated variances |
+
+## Shiny simulation
+
+```{r}
+library(shiny)
+library(ggplot2)
+library(lme4)
+library(psych)
+library(dplyr)
+library(tidyr)
+
+#---------------------------------------------------------
+# UI
+#---------------------------------------------------------
+
+ui <- fluidPage(
+
+  titlePanel("ICC and Linear Mixed Model Simulator"),
+
+  sidebarLayout(
+
+    sidebarPanel(
+
+      sliderInput("sd_patient",
+                  "Patient SD",
+                  min = 0,
+                  max = 5,
+                  value = 2,
+                  step = 0.1),
+
+      sliderInput("sd_rater",
+                  "Rater SD",
+                  min = 0,
+                  max = 3,
+                  value = 0.5,
+                  step = 0.1),
+
+      sliderInput("sd_error",
+                  "Residual SD",
+                  min = 0.1,
+                  max = 3,
+                  value = 1,
+                  step = 0.1),
+
+      sliderInput("n_patient",
+                  "Patients",
+                  min = 10,
+                  max = 100,
+                  value = 30),
+
+      sliderInput("n_rater",
+                  "Raters",
+                  min = 2,
+                  max = 8,
+                  value = 3),
+
+      numericInput("seed",
+                   "Random Seed",
+                   value = 123),
+
+      actionButton("simulate",
+                   "Simulate")
+    ),
+
+    mainPanel(
+
+      tabsetPanel(
+
+        tabPanel("Observed Data",
+
+                 plotOutput("scatter", height = 500)
+        ),
+
+        tabPanel("Variance",
+
+                 plotOutput("variancePlot", height = 400),
+
+                 tableOutput("varianceTable")
+        ),
+
+        tabPanel("ICC",
+
+                 verbatimTextOutput("icc")
+        ),
+
+        tabPanel("Mixed Model",
+
+                 verbatimTextOutput("lmm"))
+      )
+    )
+  )
+)
+
+#---------------------------------------------------------
+# SERVER
+#---------------------------------------------------------
+
+server <- function(input, output){
+
+  dat <- eventReactive(input$simulate,{
+
+    set.seed(input$seed)
+
+    patient_effect <-
+      rnorm(input$n_patient,
+            0,
+            input$sd_patient)
+
+    rater_effect <-
+      rnorm(input$n_rater,
+            0,
+            input$sd_rater)
+
+    expand.grid(
+
+      Patient=factor(1:input$n_patient),
+
+      Rater=factor(1:input$n_rater)
+
+    ) |>
+
+      mutate(
+
+        Score =
+          10 +
+          patient_effect[Patient] +
+          rater_effect[Rater] +
+          rnorm(n(),
+                0,
+                input$sd_error)
+      )
+
+  })
+
+  fit <- reactive({
+
+    lmer(
+
+      Score ~
+        (1|Patient)+
+        (1|Rater),
+
+      data=dat()
+
+    )
+
+  })
+
+  #-------------------------------------------------------
+  # Scatter
+  #-------------------------------------------------------
+
+  output$scatter <- renderPlot({
+
+    ggplot(dat(),
+
+           aes(Patient,
+               Score,
+               colour=Rater,
+               group=Patient))+
+
+      geom_line(alpha=.35)+
+
+      geom_point(size=2)+
+
+      theme_bw(base_size=15)+
+
+      theme(axis.text.x=element_blank())
+
+  })
+
+  #-------------------------------------------------------
+  # Variance
+  #-------------------------------------------------------
+
+  variance <- reactive({
+
+    vc <-
+      as.data.frame(VarCorr(fit()))
+
+    data.frame(
+
+      Component=c("Patient",
+                  "Rater",
+                  "Residual"),
+
+      Variance=vc$vcov
+
+    )
+
+  })
+
+  output$varianceTable <-
+
+    renderTable({
+
+      variance()
+
+    },digits=3)
+
+  output$variancePlot <- renderPlot({
+
+    ggplot(variance(),
+
+           aes(x="Variance",
+               y=Variance,
+               fill=Component))+
+
+      geom_bar(stat="identity")+
+
+      coord_flip()+
+
+      theme_bw(base_size=16)
+
+  })
+
+  #-------------------------------------------------------
+  # ICC
+  #-------------------------------------------------------
+
+  output$icc <- renderPrint({
+
+    wide <-
+
+      dat() |>
+
+      pivot_wider(
+
+        names_from=Rater,
+
+        values_from=Score
+
+      )
+
+    ICC(wide[,-1])
+
+  })
+
+  #-------------------------------------------------------
+  # Mixed Model
+  #-------------------------------------------------------
+
+  output$lmm <- renderPrint({
+
+    summary(fit())
+
+  })
+
+}
+
+shinyApp(ui,server)
+```
+

@@ -1,0 +1,450 @@
+---
+title: "Untitled"
+author: "Lian Rui"
+date: "2026-07-18"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Version log
+
+Add mixed-effect model 
+
+Revise the code
+
+## Workflow
+
+### TODO: this flow diagram need to be updated
+
+```text
+                    Raw Excel
+                        │
+                        ▼
+                 Read Excel file
+                        │
+        ┌───────────────┴───────────────┐
+        ▼                               ▼
+ Total DPAS score                 44 Individual Items
+        │                               │
+        ▼                               ▼
+ Overall ICC                  ICC of each item
+        │
+        ├──────────────┐
+        ▼              ▼
+Regional ICC      Metric ICC
+        │              │
+        └──────┬───────┘
+               ▼
+        Summary Table
+               │
+               ▼
+          Heatmap
+               |
+               ▼
+    Lowest agreement items
+```
+
+## Packages
+
+```{r}
+# packages
+library(tidyverse)
+library(readxl)
+library(dplyr)
+library(tidyr)
+library(psych) # ICC
+library(ggplot2)
+library(colorspace)
+```
+
+## Step 1: Getting The Data
+
+```{r}
+# read Excel
+dat <- read_excel("data/Book1.xlsx")
+```
+
+### Long format data
+
+```{r}
+dat_long <- dat %>%
+  pivot_longer(
+    cols = 3:46,
+    names_to = "Item",
+    values_to = "Score"
+  ) %>%
+  mutate(
+    Site = case_when(
+      str_detect(Item, "^额") ~ "Forehead",
+      str_detect(Item, "^左") ~ "LeftCheek",
+      str_detect(Item, "^右") ~ "RightCheek",
+      str_detect(Item, "^下") ~ "Chin"
+    ),
+
+    Metric = str_extract(Item, "\\d+$"),
+
+    Patient = factor(患者),
+    Rater = factor(监察人),
+    Site = factor(Site),
+    Metric = factor(Metric)
+  ) %>%
+  select(Patient, Rater, Site, Metric, Score)
+```
+
+## The total score of each patient
+
+```{r}
+# Calculate total score of each patient from dat_long
+total_score <- dat_long %>%
+  group_by(Patient, Rater) %>%
+  summarise(TotalScore = sum(Score, na.rm = TRUE)) %>%
+  ungroup()
+```
+
+### Visualize the distribution of total score: Histogram
+
+```{r}
+# Visualize the distribution of total score
+ggplot(total_score, aes(x = TotalScore)) +
+  geom_histogram(binwidth = 1, fill = "steelblue", color = "grey") +
+  labs(title = "Distribution of Total Score", x = "Total Score", y = "Count") +
+  theme_minimal() + 
+  facet_grid(Rater ~ .)
+```
+
+### Visualize the distribution of total score: density plot
+
+```{r}
+# Visualize the distribution of total score as a density plot 
+ggplot(total_score, aes(x = TotalScore)) +
+  geom_density(fill = "steelblue", color = "grey") +
+  labs(title = "Distribution of Total Score", x = "Total Score", y = "Count") +
+  geom_vline(xintercept = c(7, 10), color = "orange", linetype = "dashed", size = 1) +
+  theme_minimal() + 
+  facet_grid(Rater ~ .)
+```
+
+患者的评分集中在7-10分之间，说明大部分患者的评分在这个范围内。
+
+三个评分人的评分分布大致相似，说明评分人之间的评分一致性较高。
+
+## The ICC of overall score
+
+Calculate the intraclass correlation(ICC) of three raters for the overall score of each patient.
+
+```{r}
+# convert the total_score data frame to wide format for ICC calculation
+icc_data <- total_score %>%
+  pivot_wider(
+    names_from = Rater,
+    values_from = TotalScore,
+    names_prefix = "Rater"
+  )
+
+# Calculate the icc using the psych package
+icc_result <- ICC(icc_data[, -1]) # Exclude the Patient column 
+
+View(icc_result$results)
+```
+
+### TODO: Explain the ICC results
+
+## 对11项指标，三个评分人的评分是否存在主观差异
+
+### Visualization
+
+```{r}
+metric_long <- dat_long %>%
+  group_by(Metric, Rater) %>%
+  summarise(Average_Score = mean(Score, na.rm = TRUE)) %>%
+  ungroup()
+
+metric_long$Metric <- factor(metric_long$Metric, levels = (1:11))
+```
+
+```{r}
+# Visualize the average score of each metric by rater
+# The metric ordered from 1 to 1-10
+ggplot(metric_long, aes(x = Rater, 
+                        y = fct_rev(Metric),
+                        fill = Average_Score)) +
+  geom_tile(color = "grey") +
+  geom_text(aes(label = round(Average_Score, 2)), 
+            color = "steelblue", 
+            size = 4) + 
+  labs(title = "Average Score of Each Metric by Rater", 
+       x = "Metric", y = "Average Score") +
+  scale_fill_continuous_diverging(palette = "Cyan-Magenta") +
+  theme_minimal()
+
+```
+
+```{r}
+library(dplyr)
+library(tidyr)
+library(psych)
+
+icc_results <- data.frame()
+
+for (m in sort(unique(dat_long$Metric))) {
+
+  tmp <- dat_long %>%
+    filter(Metric == m) %>%
+    group_by(Patient, Rater) %>%
+    summarise(
+      Score = sum(Score),    # sum across the 4 facial sites
+      .groups = "drop"
+    ) %>%
+    pivot_wider(
+      names_from = Rater,
+      values_from = Score
+    )
+
+  icc <- ICC(tmp[, -1])
+
+  icc_results <- bind_rows(
+    icc_results,
+    data.frame(
+      Metric = m,
+      ICC2_1 = icc$results["Single_random_raters", "ICC"],
+      Lower = icc$results["Single_random_raters", "lower bound"],
+      Upper = icc$results["Single_random_raters", "upper bound"],
+      p = icc$results["Single_random_raters", "p"]
+    )
+  )
+}
+
+icc_results
+```
+
+
+
+#####################
+
+## Calculate ICC for 11 metrics 
+
+```{r}
+# 
+icc_metric <- dat_long %>%
+  group_by(Metric) %>%
+  summarise(
+    icc = ICC(select(., Score), model = "twoway", type = "agreement")$results["Single_random_raters", "ICC"]
+  ) %>%
+  ungroup()
+```
+
+
+### Question: The ICC of each region, any differences?
+
+```{r}
+region_results <- data.frame()
+
+# TODOs: Annotation of the codes below.
+
+for (r in names(regions)) {
+  
+  dat$score <- rowSums(dat[, regions[[r]]])
+
+  tmp <- dat %>%
+    select(患者, 监察人, score) %>%
+    pivot_wider(
+      names_from = 监察人,
+      values_from = score
+    )
+
+  icc <- ICC(tmp[, -1])
+
+  region_results <- rbind(
+    region_results,
+    data.frame(
+      Region = r,
+      ICC = icc$results["Single_random_raters", "ICC"]
+    )
+  )
+}
+
+region_results
+```
+
+### TOTO: Explain the ICC results by region
+
+### Question: any differences in the scores by rater and by region?
+
+```{r}
+# Create a long format data frame for plotting
+long_dat <- dat %>%
+  pivot_longer(
+    cols = 3:46,
+    names_to = "Item",
+    values_to = "Score"
+  )
+
+# Summarize the scores by rater and region
+summary_scores <- long_dat %>%
+  mutate(Region = case_when(
+    Item %in% names(dat)[regions$Forehead] ~ "Forehead",
+    Item %in% names(dat)[regions$LeftCheek] ~ "LeftCheek",
+    Item %in% names(dat)[regions$RightCheek] ~ "RightCheek",
+    Item %in% names(dat)[regions$Chin] ~ "Chin"
+  )) %>%
+  group_by(监察人, Item) %>%
+  summarise(Average_Score = mean(Score, na.rm = TRUE)) %>%
+  ungroup()
+```
+
+```{r}
+# Visualize the average score by rater and region
+ggplot(summary_scores, aes(x = 监察人, y = Average_Score, fill = Item)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(
+    title = "Average Scores by Rater and Region",
+    x = "监察人", y = "Average Score"
+  ) +
+  facet_grid(Item ~ .) +
+  theme_minimal()
+```
+
+## Step 5 Calculate ICC for each metric
+
+### Question: The ICC of each metric by rater
+
+```{r}
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+
+## Calculate average score of each metric for each rater
+metric_results <- lapply(names(metric_map), function(metric){
+
+  dat %>%
+    mutate(
+      metric_score = rowMeans(
+        select(., all_of(metric_map[[metric]])),
+        na.rm = TRUE
+      )
+    ) %>%
+    group_by(监察人) %>%
+    summarise(
+      MeanScore = mean(metric_score),
+      .groups = "drop"
+    ) %>%
+    mutate(Metric = metric)
+
+}) %>%
+  bind_rows()
+```
+
+
+```{r}
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+
+metric_long <- metric_results %>%
+  pivot_longer(
+    cols = -Metric,
+    names_to = "Rater",
+    values_to = "MeanScore"
+  ) %>%
+  mutate(
+    Metric = factor(
+      Metric,
+      levels = paste0("Metric", 1:11)
+    )
+  )
+
+ggplot(metric_long,
+       aes(x = Rater,
+           y = Metric,
+           fill = MeanScore)) +
+  geom_tile(color = "white") +
+  geom_text(aes(label = sprintf("%.2f", MeanScore)), size = 4) +
+  scale_y_discrete(limits = rev(levels(metric_long$Metric))) +
+  scale_fill_gradient2(
+    low = "steelblue",
+    mid = "white",
+    high = "firebrick",
+    midpoint = mean(metric_long$MeanScore)
+  ) +
+  labs(
+    x = "Rater",
+    y = "Metric",
+    fill = "Mean Score"
+  ) +
+  theme_minimal(base_size = 14)
+```
+
+
+```{r}
+ggplot(
+  metric_long,
+  aes(Rater, Metric, fill = MeanScore)
+) +
+  geom_tile(color = "white", linewidth = 0.5) +
+  geom_text(aes(label = sprintf("%.2f", MeanScore)), size = 4) +
+  scale_y_discrete(limits = rev) + # Metric1 at top
+  scale_fill_gradient2(
+    low = "steelblue",
+    mid = "white",
+    high = "firebrick",
+    midpoint = mean(metric_long$MeanScore)
+  ) +
+  labs(
+    x = NULL,
+    y = NULL,
+    fill = "Mean\nScore"
+  ) +
+  theme_minimal(base_size = 14)
+```
+
+
+## Mixed effect model
+
+```{r}
+library(tidyverse)
+
+dat <- readxl::read_excel("data/Book1.xlsx")
+
+long <- dat %>%
+  pivot_longer(
+    cols = 3:46,
+    names_to = "Item",
+    values_to = "Score"
+  ) %>%
+  mutate(
+    Site = case_when(
+      str_detect(Item, "^额") ~ "Forehead",
+      str_detect(Item, "^左") ~ "LeftCheek",
+      str_detect(Item, "^右") ~ "RightCheek",
+      str_detect(Item, "^下") ~ "Chin"
+    ),
+
+    Metric = str_extract(Item, "\\d+$"),
+
+    Patient = factor(患者),
+    Rater = factor(监察人),
+    Site = factor(Site),
+    Metric = factor(Metric)
+  ) %>%
+  select(Patient, Rater, Site, Metric, Score)
+```
+
+```{r}
+library(lme4)
+
+fit <- glmer(
+  Score ~ Site + Metric * Rater +
+    (1 | Patient), 
+  family = binomial,
+  data = long
+)
+
+summary(fit)
+anova(fit)
+```
+
