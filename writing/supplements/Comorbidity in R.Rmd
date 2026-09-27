@@ -14,22 +14,23 @@ knitr::opts_chunk$set(echo = TRUE)
 
 ## Background
 
-Evidence shows skin disease and skin aging is associated with various co-morbidities[@liLargescaleEpidemiologicalAnalysis2024]
+Evidence shows skin disease and skin aging is associated with various co-morbidity.[@liLargescaleEpidemiologicalAnalysis2024]
 
-Two approaches to include co-morbiditties into the study:
+Two approaches to include co-morbidity into the study:
 
 1.  A composite comorbidity index: Charlson Comorbidity Index (CCI)[@charlsonNewMethodClassifying1987] and Elixhauser index[@elixhauserComorbidityMeasuresUse1998].
 2.  Some common chronic diseases, CKD, Diabetes and risk factors (smoking)
 
 ## Objective
 
-Establish the R skill to calculate some popular comorbidity index
+Establish the R skill to calculate some popular co-morbidity index
 
 ## Package
 
 ```{r}
-# install package comorbidity
+# install package {comorbidity}
 library(comorbidity)
+library(tidyverse)
 ```
 
 ## Simulating ICD-10 code
@@ -53,7 +54,7 @@ print(head(x, n = 15), row.names = FALSE)
 
 ```
 
-## Compute comorbidity score
+## Compute co-morbidity score
 
 ```{r}
 set.seed(1)
@@ -66,16 +67,32 @@ x <- data.frame(
 ### Charlson
 
 ```{r}
-charlson <- comorbidity(x = x, id = "id", code = "code", map = "charlson_icd10_quan", assign0 = FALSE) 
-charlson 
+charlson <- comorbidity(x = x, id = "id", code = "code", map = "charlson_icd10_quan", assign0 = TRUE) 
+charlson
+```
+
+```{r}
+cci <- score(charlson, weights = "charlson", assign0 = TRUE)
+cci
 ```
 
 ### Elixhauser
 
 ```{r}
-elixhauser <- comorbidity(x = x, id = "id", code = "code", map = "elixhauser_icd10_quan", assign0 = FALSE)
+elixhauser <- comorbidity(x = x, id = "id", code = "code", map = "elixhauser_icd10_quan", assign0 = TRUE)
 elixhauser
 ```
+
+```{r}
+exlixhauser_socore <- score(elixhauser, weights = "swiss", assign0 = TRUE)
+exlixhauser_socore
+```
+
+### Questions
+
+1.  Should the comorbidity index be summed up
+
+Yes, in Charlson Index, each co-morbidity has weights and it is possible to assign levels of severity, e.g., malignancy. for exlixhauser, no weights but still has severity levels.
 
 ## Todo:
 
@@ -84,5 +101,9 @@ Verify the Version of ICD used
 ICD10: 2009, 2011, 2017, 2018, 2022
 
 ICD9: 2015?
+
+## Summary
+
+Beyond the well-documented effects of ultraviolet exposure, environmental factors such as air pollution and heat, lifestyle factors including smoking, sleep, and diet, and pathophysiological factors such as menopause, psychological stress, diabetes, and chronic kidney disease may all contribute to skin quality.[@addorPhotoagingAdditionalFactors2018a]
 
 ## Reference: 
