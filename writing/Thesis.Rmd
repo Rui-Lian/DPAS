@@ -94,7 +94,7 @@ DPAS <- DPAS |>
 DPAS <- DPAS |>
   pivot_longer(cols = 3:ncol(DPAS), 
                names_to = "Position_metric", 
-               values_to = "score")
+               values_to = "Score")
 
 # Separate column `Position_metric` into two columns
 # one column of position and another position of metrics 1 to 11
@@ -176,9 +176,145 @@ some exploratory analysis of raw data , any interactive package in R to explore 
 gwalkr(data = dat)
 ```
 
-#### age - score
+### Distributions of score
 
-#### Many plot and assumption
+```{r}
+total_score <- dat |>
+  group_by(Patient_id, Sex, Age, Rater) |>
+  summarise(total = sum(Score, na.rm = TRUE)) |>
+  ungroup()
+
+# Visualize the distribution of total score
+#| fig-width: 5
+#| fig-height: 3
+#| out-width: 70%
+g<- ggplot(total_score, aes(x = total)) +
+  geom_histogram(binwidth = 1, fill = "steelblue", color = "grey") +
+  labs(title = "Distribution of Total Score by rater and sex", x = "Total Score", y = "Count") +
+  theme_minimal() + 
+  facet_grid(Rater ~ Sex)
+
+g
+```
 
 
+### Mean score by age, sex
+
+```{r}
+avg_score <- total_score |>
+  group_by(Patient_id, Age, Sex) |>
+  summarise(avg = mean(total, na.rm = TRUE))
+
+avg_score
+
+g <- ggplot(avg_score, aes(x = Age, y= avg, colour = Sex)) + 
+  geom_point(size = 2, alpha = 0.7) +
+  geom_smooth(method = "lm", se = FALSE) +
+  labs(title = "Mean DPAS Score by Age and Sex", x = "Age", y = "Mean DPAS Score") +
+  theme_minimal()
+
+g
+```
+
+## ICC evaluation of total score
+
+```{r}
+# convert the total_score data frame to wide format for ICC calculation
+icc_data <- total_score %>%
+  pivot_wider(
+    # The names of the new columns
+    names_from = Rater,
+    
+    # The values of the new columns
+    values_from = total,
+    
+    # The prefix for the new columns
+    names_prefix = "Rater"
+  )
+
+icc_data <- icc_data |>
+  select(-Patient_id, -Age, -Sex)
+
+# Calculate the icc using the psych package
+icc_result <- ICC(icc_data) # Exclude the Patient column 
+
+icc_result$results
+```
+
+## 对11项指标，三个评分人的评分是否存在主观差异
+
+```{r}
+# Calculate the ICC for each metric
+# A data frame to store the ICC results
+icc_results <- data.frame()
+
+# Loop through each unique metric
+for (m in seq_along(unique(dat$Metric))) {
+  
+  # tmp is a temporary data frame that contains the scores for the current metric
+  tmp <- dat %>%
+    # metric filtered as m in the loop
+    filter(Metric == m) %>%
+    group_by(Patient_id, Rater) %>%
+    summarise(
+      # for each metric, sum the scores across the 4 facial sites
+      Score = sum(Score),    # sum across the 4 facial sites
+      # remove the grouping structure after summarising
+      .groups = "drop"
+    ) %>%
+    # Transform to wide format for ICC calculation
+    pivot_wider(
+      names_from = Rater,
+      values_from = Score
+    )
+
+  icc <- ICC(tmp[, -1])
+  # Store the ICC results in the icc_results data frame
+  icc_results <- bind_rows(
+    icc_results,
+    data.frame(
+      Metric = m,
+      # Extract the ICC value for single random raters from the ICC results
+      ICC2_1 = icc$results["Single_random_raters", "ICC"],
+      
+      # Extract the upper and lower bound of the ICC value 
+      # for single random raters from the ICC results
+      Lower = icc$results["Single_random_raters", "lower bound"],
+      Upper = icc$results["Single_random_raters", "upper bound"],
+      
+      # p value
+      p = icc$results["Single_random_raters", "p"]
+    )
+  )
+}
+
+icc_results
+```
+
+
+## Mixed effect model
+
+```{r}
+library(lmerTest)
+
+fit <- lmer(
+  total ~ Age + Sex + (1 | Rater) + (1 | Patient_id),
+  data = total_score
+)
+
+```
+
+```{r}
+summary(fit)
+
+```
+
+```{r}
+confint(fit, method = "Wald")
+```
+
+
+```{r}
+VarCorr(fit)
+```
 
