@@ -25,7 +25,7 @@ library(colorspace)
 library(showtext)
 showtext_auto()
 library(GWalkR) # Tabuleu like, TODO: furrther explore
-library(DataExplorer)
+library(DataExplorer) 
 library(gtsummary) # Table 1
 library(kableExtra)
 ```
@@ -42,12 +42,13 @@ path <- "~/DPAS Reproducibility/data"
 # Import the DPAS48.xlsx
 DPAS <- read_excel(paste0(path, "/", "DPAS48.xlsx"))
 
+# Import pt info
 pt_info <- read_excel(paste0(path, "/", "DPAS48_pt_info.xls"))
 ```
 
 ## Cleaning data
 
-```{r clean DPAS}
+```{r clean DPAS col names}
 # The column names are in Chinese
 # Translate to English as below: 
 # 患者：Patient_id
@@ -56,7 +57,6 @@ pt_info <- read_excel(paste0(path, "/", "DPAS48_pt_info.xls"))
 # 右颊: Right cheek
 # 左颊：Left cheek
 # 下颌：Chin
-
 DPAS <- DPAS |>
   rename("Patient_id" = "患者",
          "Rater" = "监察人")
@@ -87,14 +87,20 @@ DPAS <- DPAS |>
     matches("^下\\d+$")
   )
 ## TODO: a function to replace the four repeated action above!
+```
 
+
+```{r clean DPAS long format}
 # DPAS to long format
 # Patient_id and Rater unchanged
 DPAS <- DPAS |>
   pivot_longer(cols = 3:ncol(DPAS), 
                names_to = "Position_metric", 
                values_to = "Score")
+```
 
+
+```{r clean DPAS position_metric separation}
 # Separate column `Position_metric` into two columns
 # one column of position and another position of metrics 1 to 11
 DPAS <- DPAS |>
@@ -104,11 +110,10 @@ DPAS <- DPAS |>
     sep = "(?<=\\D)(?=\\d)", 
     convert = TRUE
   )
-
 ```
 
 
-```{r Cleaning pt_info}
+```{r Clean pt_info col names}
 # Change columns into English
 # 姓名: Patient_id
 # 性别: Sex
@@ -119,7 +124,10 @@ pt_info <- pt_info |>
     "Sex" = "性别",
     "Age" = "年龄"
   )
+```
 
+
+```{r clean pt_info sex value to English}
 # change Sex value: 
 # 男: Male
 # 女: Female
@@ -133,7 +141,7 @@ pt_info <- pt_info |>
 ```
 
 
-```{r Merging}
+```{r Merge DPAS and pt_info}
 # Merge table pt_info with table DPAS
 dat <- pt_info |>
   left_join(DPAS, by = join_by("Patient_id"))
@@ -179,7 +187,7 @@ gwalkr(data = dat)
 ### Distributions of score by rater sex
 
 ```{r}
-total_score_by_rater <- dat |>
+total_score_by_rater_sex <- dat |>
   group_by(Patient_id, Sex, Age, Rater) |>
   summarise(total = sum(Score, na.rm = TRUE)) |>
   ungroup()
@@ -188,7 +196,7 @@ total_score_by_rater <- dat |>
 #| fig-width: 5
 #| fig-height: 3
 #| out-width: 70%
-g<- ggplot(total_score_by_rater, aes(x = total)) +
+g<- ggplot(total_score_by_rater_sex, aes(x = total)) +
   geom_histogram(binwidth = 1, fill = "steelblue", color = "grey") +
   labs(title = "Distribution of Total Score by rater and sex", x = "Total Score", y = "Count") +
   theme_minimal() + 
@@ -252,11 +260,27 @@ g
 
 ## 男女在11项评分中的表现和差别
 
+```{r}
+avg_score_sex_metric <- dat |>
+  group_by(Sex, Position, Metric) |>
+  summarise(avg_score = mean(Score)) |>
+  ungroup()
+
+
+g <- ggplot(avg_score_sex_metric, 
+            aes(x = Metric, y = avg_score, fill = Sex)) + 
+  geom_col(position = position_dodge()) + 
+  facet_wrap(Position~., nrow = 2) + 
+  theme_minimal()
+
+g
+```
+
 ## ICC evaluation of total score
 
 ```{r}
 # convert the total_score data frame to wide format for ICC calculation
-icc_data <- total_score %>%
+icc_data <- total_score_by_rater_sex %>%
   pivot_wider(
     # The names of the new columns
     names_from = Rater,
@@ -280,46 +304,57 @@ icc_result$results
 ## 对11项指标，三个评分人的评分是否存在主观差异
 
 ```{r}
-# Calculate the ICC for each metric
-# A data frame to store the ICC results
+# Calculate ICC for each metric
+# Each metric is first summed across the 4 facial regions
+# for each patient and rater, producing a score from 0 to 4.
+
 icc_results <- data.frame()
 
 # Loop through each unique metric
-for (m in seq_along(unique(dat$Metric))) {
+for (m in unique(dat$Metric)) {
   
-  # tmp is a temporary data frame that contains the scores for the current metric
+  # Create a temporary dataset for the current metric
   tmp <- dat %>%
-    # metric filtered as m in the loop
     filter(Metric == m) %>%
+    
+    # For each patient and rater, sum the scores
+    # across the 4 facial regions
     group_by(Patient_id, Rater) %>%
     summarise(
-      # for each metric, sum the scores across the 4 facial sites
-      Score = sum(Score),    # sum across the 4 facial sites
-      # remove the grouping structure after summarising
+      Score = sum(Score),
       .groups = "drop"
     ) %>%
-    # Transform to wide format for ICC calculation
+    
+    # Convert raters from rows to columns
     pivot_wider(
       names_from = Rater,
       values_from = Score
     )
 
+  # Calculate ICC
   icc <- ICC(tmp[, -1])
-  # Store the ICC results in the icc_results data frame
+  
+  # Extract ICC(2,1)
   icc_results <- bind_rows(
     icc_results,
     data.frame(
       Metric = m,
-      # Extract the ICC value for single random raters from the ICC results
-      ICC2_1 = icc$results["Single_random_raters", "ICC"],
-      
-      # Extract the upper and lower bound of the ICC value 
-      # for single random raters from the ICC results
-      Lower = icc$results["Single_random_raters", "lower bound"],
-      Upper = icc$results["Single_random_raters", "upper bound"],
-      
-      # p value
-      p = icc$results["Single_random_raters", "p"]
+      ICC2_1 = icc$results[
+        "Single_random_raters", 
+        "ICC"
+      ],
+      Lower = icc$results[
+        "Single_random_raters", 
+        "lower bound"
+      ],
+      Upper = icc$results[
+        "Single_random_raters", 
+        "upper bound"
+      ],
+      p = icc$results[
+        "Single_random_raters", 
+        "p"
+      ]
     )
   )
 }
@@ -333,24 +368,45 @@ icc_results
 ```{r}
 library(lmerTest)
 
-fit <- lmer(
-  total ~ Age + Sex + (1 | Rater) + (1 | Patient_id),
-  data = total_score
+# 1. Center age
+dat$Age_c <- as.numeric(scale(dat$Age, center = TRUE, scale = FALSE))
+
+# convert metric as factor
+dat$Metric <- factor(dat$Metric)
+
+# 2. Fit model
+fit <- glmer(
+  Score ~ Metric +  Position +  Sex + Age_c + Metric * Sex + 
+    (1 | Patient_id),
+  data = dat,
+  family = binomial
 )
 
-```
-
-```{r}
+# 3. Check convergence
+isSingular(fit)
 summary(fit)
-
 ```
 
 ```{r}
-confint(fit, method = "Wald")
+print(x, correlation = TRUE)
 ```
 
 
 ```{r}
-VarCorr(fit)
+fit_main <- glmer(
+  Score ~ Metric + Position + Sex + Age_c +
+    (1 | Patient_id),
+  data = dat,
+  family = binomial
+)
+
+fit_interaction <- glmer(
+  Score ~ Metric + Position + Sex + Age_c + Metric * Sex +
+    (1 | Patient_id),
+  data = dat,
+  family = binomial
+)
+
+anova(fit_main, fit_interaction, test = "Chisq")
 ```
 
