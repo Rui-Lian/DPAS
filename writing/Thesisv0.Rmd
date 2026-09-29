@@ -229,15 +229,17 @@ icc_data <- total_score %>%
     names_prefix = "Rater"
   )
 
-# Calculate the icc using the psych package
-icc_result <- ICC(icc_data[, -1]) # Exclude the Patient column 
-```
+icc_data <- icc_data |>
+  select(-Patient_id, -Age, -Sex)
 
-```{r}
+# Calculate the icc using the psych package
+icc_result <- ICC(icc_data) # Exclude the Patient column 
+
 icc_result$results
 ```
 
-总体而言，对于总体评分的ICC评估均在0.9以上，这说明，评估人差异，对最终患者总体评分的影响相对较小，三位评估人的总体评分表现，基本一致。
+
+
 
 ## 对11项指标，三个评分人的评分是否存在主观差异
 

@@ -11,7 +11,7 @@ editor_options:
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-## Packgages
+## Packages
 
 ```{r}
 # packages
@@ -29,7 +29,6 @@ library(DataExplorer)
 library(gtsummary) # Table 1
 library(kableExtra)
 ```
-
 
 ## Background
 
@@ -172,14 +171,15 @@ table1_df
 ### GWalkR
 some exploratory analysis of raw data , any interactive package in R to explore dara with shiny
 
-```{r GWalKR app }
+```{r GWalKR app, viewer = "pane"}
+# TODO: Specify the output to view pane, not inline? 
 gwalkr(data = dat)
 ```
 
-### Distributions of score
+### Distributions of score by rater sex
 
 ```{r}
-total_score <- dat |>
+total_score_by_rater <- dat |>
   group_by(Patient_id, Sex, Age, Rater) |>
   summarise(total = sum(Score, na.rm = TRUE)) |>
   ungroup()
@@ -188,7 +188,7 @@ total_score <- dat |>
 #| fig-width: 5
 #| fig-height: 3
 #| out-width: 70%
-g<- ggplot(total_score, aes(x = total)) +
+g<- ggplot(total_score_by_rater, aes(x = total)) +
   geom_histogram(binwidth = 1, fill = "steelblue", color = "grey") +
   labs(title = "Distribution of Total Score by rater and sex", x = "Total Score", y = "Count") +
   theme_minimal() + 
@@ -200,12 +200,46 @@ g
 
 ### Mean score by age, sex
 
-```{r}
-avg_score <- total_score |>
+```{r average score}
+avg_score <- total_score_by_rater |>
   group_by(Patient_id, Age, Sex) |>
   summarise(avg = mean(total, na.rm = TRUE))
+```
 
-avg_score
+```{r avg score boxplot by sex}
+g <- ggplot(avg_score, aes(x = Sex, y= avg, color = Sex)) + 
+  geom_boxplot(show.legend = FALSE) + 
+  geom_point(show.legend = FALSE) + 
+  labs(title = "患者DPAS平均分的分布情况", 
+       subtitle = "患者分数由四个评估人的分数平均得到",
+       x = "性别",
+       y = "DPAS 平均分") + 
+  theme_minimal()
+
+g
+```
+
+```{r compare mean by sex}
+dpas_mean <- avg_score |>
+  group_by(Sex) |>
+  summarise(sex_mean = mean(avg, na.rm = TRUE), 
+            sd = sd(avg, na.rm = TRUE))
+
+g <- ggplot(dpas_mean, aes(x = Sex, y = sex_mean)) + 
+  geom_col(aes(fill = Sex),
+           show.legend = FALSE) + 
+  geom_errorbar(aes(ymin = sex_mean - sd, ymax = sex_mean + sd), 
+                width = 0.1) + 
+  labs(title = "患者DPAS评分均值±SD",
+       y = "患者DPAS评分均值",
+       x = "性别") + 
+  theme_minimal()
+
+g
+```
+
+
+```{r correlation with age}
 
 g <- ggplot(avg_score, aes(x = Age, y= avg, colour = Sex)) + 
   geom_point(size = 2, alpha = 0.7) +
@@ -215,6 +249,8 @@ g <- ggplot(avg_score, aes(x = Age, y= avg, colour = Sex)) +
 
 g
 ```
+
+## 男女在11项评分中的表现和差别
 
 ## ICC evaluation of total score
 
