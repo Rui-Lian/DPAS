@@ -11,7 +11,9 @@ editor_options:
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-## Packages
+## 1. Setup
+
+### Packages
 
 ```{r}
 # packages
@@ -30,135 +32,223 @@ library(gtsummary) # Table 1
 library(kableExtra)
 ```
 
-## Background
+### Global options
 
-## Methods
+### Helper functions
 
-## Getting data
 
-```{r data import}
+## 2. Data import
+
+### Path
+
+```{r path}
 path <- "~/DPAS Reproducibility/data"
-
-# Import the DPAS48.xlsx
-DPAS <- read_excel(paste0(path, "/", "DPAS48.xlsx"))
-
-# Import pt info
-pt_info <- read_excel(paste0(path, "/", "DPAS48_pt_info.xls"))
 ```
 
-## Cleaning data
+### raw_dpas
+
+```{r raw_dpas import}
+raw_dpas <- read_excel(
+  file.path(path, "DPAS48.xlsx")
+)
+```
+
+### raw_pt
+
+```{r raw_pt import}
+raw_pt <- read_excel(
+  file.path(path, "DPAS48_pt_info.xls")
+)
+```
+
+## 3. Data cleaning
+
+### clean_dpas
 
 ```{r clean DPAS col names}
-# The column names are in Chinese
-# Translate to English as below: 
-# 患者：Patient_id
-# 监察人：Rater1, Rater12, Rater13, Rater14
-# 前额: Forehead
-# 右颊: Right cheek
-# 左颊：Left cheek
-# 下颌：Chin
-DPAS <- DPAS |>
-  rename("Patient_id" = "患者",
-         "Rater" = "监察人")
-
-# Use dplyr to change column names by pattern match in batch
-# e.g., 额1 to 额11 as Forehead1 to forehead 11
-DPAS <- DPAS |>
+clean_dpas <- raw_dpas |>
+  rename(
+    Patient_id = 患者,
+    Rater = 监察人
+  ) |>
   rename_with(
-    ~paste0("Forehead", sub("^额", "", .x)), 
+    ~ paste0("Forehead", sub("^额", "", .x)),
     matches("^额\\d+$")
-  )
-
-DPAS <- DPAS |>
+  ) |>
   rename_with(
-    ~paste0("Right_cheek", sub("^右", "", .x)), 
+    ~ paste0("Right_cheek", sub("^右", "", .x)),
     matches("^右\\d+$")
-  )
-
-DPAS <- DPAS |>
+  ) |>
   rename_with(
-    ~paste0("Left_cheek", sub("^左", "", .x)), 
+    ~ paste0("Left_cheek", sub("^左", "", .x)),
     matches("^左\\d+$")
-  )
-
-DPAS <- DPAS |>
+  ) |>
   rename_with(
-    ~paste0("Chin", sub("^下", "", .x)), 
+    ~ paste0("Chin", sub("^下", "", .x)),
     matches("^下\\d+$")
   )
-## TODO: a function to replace the four repeated action above!
 ```
 
+### clean_dpas_long
 
 ```{r clean DPAS long format}
-# DPAS to long format
-# Patient_id and Rater unchanged
-DPAS <- DPAS |>
-  pivot_longer(cols = 3:ncol(DPAS), 
-               names_to = "Position_metric", 
-               values_to = "Score")
-```
-
-
-```{r clean DPAS position_metric separation}
-# Separate column `Position_metric` into two columns
-# one column of position and another position of metrics 1 to 11
-DPAS <- DPAS |>
+clean_dpas_long <- clean_dpas |>
+  pivot_longer(
+    cols = 3:ncol(clean_dpas),
+    names_to = "Position_metric",
+    values_to = "Score"
+  ) |>
   separate(
-    Position_metric, 
-    into = c("Position", "Metric"), 
-    sep = "(?<=\\D)(?=\\d)", 
+    Position_metric,
+    into = c("Position", "Metric"),
+    sep = "(?<=\\D)(?=\\d)",
     convert = TRUE
   )
 ```
 
+### clean_pt
 
-```{r Clean pt_info col names}
-# Change columns into English
-# 姓名: Patient_id
-# 性别: Sex
-# 年龄：Age
-pt_info <- pt_info |>
+```{r rename revalue raw_pt}
+clean_pt <- raw_pt |>
   rename(
-    "Patient_id" = "姓名",
-    "Sex" = "性别",
-    "Age" = "年龄"
-  )
-```
-
-
-```{r clean pt_info sex value to English}
-# change Sex value: 
-# 男: Male
-# 女: Female
-pt_info <- pt_info |>
+    Patient_id = 姓名,
+    Sex = 性别,
+    Age = 年龄
+  ) |>
   mutate(
-    Sex = case_when(
-      Sex == "男" ~ "Male", 
-      Sex == "女" ~ "Female" 
+    Sex = recode(
+      Sex,
+      "男" = "Male",
+      "女" = "Female"
     )
   )
 ```
 
+### Create canonical(single source of truth) dataset dat_long
 
 ```{r Merge DPAS and pt_info}
-# Merge table pt_info with table DPAS
-dat <- pt_info |>
-  left_join(DPAS, by = join_by("Patient_id"))
+dat_long <- clean_pt |>
+  left_join(
+    clean_dpas_long,
+    by = "Patient_id"
+  )
 ```
 
-## TODO: other patient demographic, co-morbidity info maybe included
+## 4. Data quallity check
 
-## Exploratory Analysis
+### Missing values
+
+```{r}
+sapply(dat_long, function(x) sum(is.na(x)))
+```
+### internal structure of dat_long
+
+```{r dat_long structure}
+str(dat_long)
+```
+
+### Change data type of each column
+
+```{r change column class}
+dat_long <- dat_long %>%
+  mutate(
+    Patient_id = as.character(Patient_id),
+    Sex        = factor(Sex),
+    Age        = as.numeric(Age), # already numeric → no-op, kept for clarity
+    Rater      = factor(Rater),
+    Position   = factor(Position),
+    Metric     = factor(Metric),
+    Score      = as.numeric(Score) # already numeric → no-op, kept for clarity
+  )
+```
+
+
+### Data summary
+
+```{r}
+summary(dat_long)
+```
+
+## 5. Descriptive analysis
+
+In `dat_long`, the columns are: 
+
+```{r}
+colnames(dat_long)
+```
+### Overall framework of descriptive analysis
+
+We can define `Sex`, `Age`, `Rater`, `Position`, `Metric` as predictors and `Score` as outcome. and the description analysis in nature is combination of predictors and the distribution, mean, count etc of outcome. And such predictor combination has some hierarchy, e.g., single variable, bivariates and so on. Create a framework of description analysis
+
+A general, combinatary structure as below: 
+
+```text
+Level 0: Outcome alone
+        │
+        ├── Overall distribution of Score
+        │
+Level 1: Single predictor
+        │
+        ├── Sex
+        ├── Age
+        ├── Rater
+        ├── Position
+        └── Metric
+        │
+Level 2: Two-dimensional descriptions
+        │
+        ├── Predictor × Score
+        ├── Predictor × Predictor
+        └── clinically/design-relevant combinations
+        │
+Level 3: Three-dimensional descriptions
+        │
+        ├── Sex × Position × Score
+        ├── Sex × Metric × Score
+        ├── Rater × Position × Score
+        └── Rater × Metric × Score
+        │
+Level 4: Full / high-dimensional structure
+        │
+        └── Sex × Age × Rater × Position × Metric × Score
+```
+
+But this hierarchy makes the description analysis cumbersome and many of them are not scientific valid. 
+
+### The scientific assumptions and questions behind the data
+
+1. Sex related question: What are the difference of skin photoaging between male and female? 
+
+1.1 Total score difference between male and female
+
+1.2 The total score by facial area (chin, forehead, right-left cheek)
+
+1.3 The overall lesion type difference
+
+1.4 The lesion type by facial area
+
+2. Age related question
+
+2.1 The correlation of score with age and sex
+
+2.2 The score of each facial area correlated with age and sex
+
+2.3 the possible lesion type difference among young and old group and sex
+
+3. Rater related question
+
+3.1 The four scores of each patient by four raters
+
+3.2 The overall distribution of total score by 4 raters
+
+3.2 The distribution of 
+
+
 
 ### Table 1
 
 ```{r Table 1}
-# Exposure var
-library(gtsummary)
-library(kableExtra)
-
-table1_df <- dat |>
+table1_df <- dat_long |>
   dplyr::select(Patient_id, Sex, Age) |>
   dplyr::distinct(Patient_id, .keep_all = TRUE) |>
   gtsummary::tbl_summary(
@@ -175,14 +265,6 @@ table1_df <- dat |>
 table1_df
 ```
 
-
-### GWalkR
-some exploratory analysis of raw data , any interactive package in R to explore dara with shiny
-
-```{r GWalKR app, viewer = "pane"}
-# TODO: Specify the output to view pane, not inline? 
-gwalkr(data = dat)
-```
 
 ### Distributions of score by rater sex
 
@@ -410,3 +492,11 @@ fit_interaction <- glmer(
 anova(fit_main, fit_interaction, test = "Chisq")
 ```
 
+## Appendix: GWalkR fast exploration
+
+Handy exploration of data using {GWalkR} package. 
+
+```{r GWalKR app, viewer = "pane"}
+# TODO: Specify the output to view pane, not inline? 
+gwalkr(data = dat_long)
+```
