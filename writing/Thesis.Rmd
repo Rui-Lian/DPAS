@@ -2,8 +2,11 @@
 title: "DPAS Reproducibility Thesis"
 author: "Lian Rui"
 date: "2026-09-24"
-output: html_document
-editor_options: 
+output:
+  html_document: default
+  pdf_document: default
+  word_document: default
+editor_options:
   chunk_output_type: inline
 ---
 
@@ -15,8 +18,7 @@ knitr::opts_chunk$set(echo = TRUE)
 
 ### Packages
 
-```{r}
-# packages
+```{r packages}
 library(tidyverse)
 library(readxl)
 library(dplyr)
@@ -30,11 +32,23 @@ library(GWalkR) # Tabuleu like, TODO: furrther explore
 library(DataExplorer) 
 library(gtsummary) # Table 1
 library(kableExtra)
+library(lmerTest)
 ```
 
 ### Global options
 
 ### Helper functions
+
+```{r}
+utils.path <- "~/DPAS Reproducibility/utils"
+```
+
+
+```{r}
+source(file.path(utils.path, "calculate_total_icc.R"))
+
+source(file.path(utils.path, "calculate_metric_icc.R"))
+```
 
 
 ## 2. Data import
@@ -134,11 +148,24 @@ dat_long <- clean_pt |>
   )
 ```
 
-## 4. Data quallity check
+### Create dat_model for logistic mixed model
+
+```{r dat_model}
+dat_model <- dat_long |>
+  mutate(
+    Age_c = Age - mean(Age, na.rm = TRUE),
+    Metric = factor(Metric),
+    Position = factor(Position),
+    Sex = factor(Sex)
+  )
+```
+
+
+## 4. Data quality check
 
 ### Missing values
 
-```{r}
+```{r missing value check}
 sapply(dat_long, function(x) sum(is.na(x)))
 ```
 ### internal structure of dat_long
@@ -173,7 +200,7 @@ summary(dat_long)
 
 In `dat_long`, the columns are: 
 
-```{r}
+```{r colnames dat long}
 colnames(dat_long)
 ```
 ### Overall framework of descriptive analysis
@@ -241,9 +268,11 @@ But this hierarchy makes the description analysis cumbersome and many of them ar
 
 3.2 The overall distribution of total score by 4 raters
 
-3.2 The distribution of 
+3.3 The distribution of facial area score by 4 raters
 
+3.4 The lesion by four raters
 
+3.5 The lesion by four raters by facial area
 
 ### Table 1
 
@@ -268,8 +297,8 @@ table1_df
 
 ### Distributions of score by rater sex
 
-```{r}
-total_score_by_rater_sex <- dat |>
+```{r score by rater sex}
+total_score_by_rater_sex <- dat_long |>
   group_by(Patient_id, Sex, Age, Rater) |>
   summarise(total = sum(Score, na.rm = TRUE)) |>
   ungroup()
@@ -287,11 +316,10 @@ g<- ggplot(total_score_by_rater_sex, aes(x = total)) +
 g
 ```
 
-
 ### Mean score by age, sex
 
 ```{r average score}
-avg_score <- total_score_by_rater |>
+avg_score <- total_score_by_rater_sex |>
   group_by(Patient_id, Age, Sex) |>
   summarise(avg = mean(total, na.rm = TRUE))
 ```
@@ -340,10 +368,10 @@ g <- ggplot(avg_score, aes(x = Age, y= avg, colour = Sex)) +
 g
 ```
 
-## 男女在11项评分中的表现和差别
+### 男女在11项评分中的表现和差别
 
-```{r}
-avg_score_sex_metric <- dat |>
+```{r metric by sex}
+avg_score_sex_metric <- dat_long |>
   group_by(Sex, Position, Metric) |>
   summarise(avg_score = mean(Score)) |>
   ungroup()
@@ -358,109 +386,77 @@ g <- ggplot(avg_score_sex_metric,
 g
 ```
 
-## ICC evaluation of total score
+## 6. Analysis dataset
 
-```{r}
-# convert the total_score data frame to wide format for ICC calculation
-icc_data <- total_score_by_rater_sex %>%
-  pivot_wider(
-    # The names of the new columns
-    names_from = Rater,
-    
-    # The values of the new columns
-    values_from = total,
-    
-    # The prefix for the new columns
-    names_prefix = "Rater"
-  )
+All analysis dataset derived from canonical `dat_long`
 
-icc_data <- icc_data |>
-  select(-Patient_id, -Age, -Sex)
+```text
+dat_long --> |group by id, rater, sex, age, sum| --> dat_total_rater
 
-# Calculate the icc using the psych package
-icc_result <- ICC(icc_data) # Exclude the Patient column 
+  dat_total_rater --> |group y id, sex, age, mean| --> dat_mean_patient
 
-icc_result$results
 ```
 
-## 对11项指标，三个评分人的评分是否存在主观差异
+### dat_total_rater
 
-```{r}
-# Calculate ICC for each metric
-# Each metric is first summed across the 4 facial regions
-# for each patient and rater, producing a score from 0 to 4.
-
-icc_results <- data.frame()
-
-# Loop through each unique metric
-for (m in unique(dat$Metric)) {
-  
-  # Create a temporary dataset for the current metric
-  tmp <- dat %>%
-    filter(Metric == m) %>%
-    
-    # For each patient and rater, sum the scores
-    # across the 4 facial regions
-    group_by(Patient_id, Rater) %>%
-    summarise(
-      Score = sum(Score),
-      .groups = "drop"
-    ) %>%
-    
-    # Convert raters from rows to columns
-    pivot_wider(
-      names_from = Rater,
-      values_from = Score
-    )
-
-  # Calculate ICC
-  icc <- ICC(tmp[, -1])
-  
-  # Extract ICC(2,1)
-  icc_results <- bind_rows(
-    icc_results,
-    data.frame(
-      Metric = m,
-      ICC2_1 = icc$results[
-        "Single_random_raters", 
-        "ICC"
-      ],
-      Lower = icc$results[
-        "Single_random_raters", 
-        "lower bound"
-      ],
-      Upper = icc$results[
-        "Single_random_raters", 
-        "upper bound"
-      ],
-      p = icc$results[
-        "Single_random_raters", 
-        "p"
-      ]
-    )
+```{r total score}
+dat_total_rater <- dat_long |>
+  group_by(Patient_id, Rater, Sex, Age) |>
+  summarise(
+    Total = sum(Score, na.rm = TRUE),
+    .groups = "drop"
   )
-}
+```
 
-icc_results
+### dat_metric_specific_rater
+
+```{r metric specific score}
+dat_metric_specific_rater <- dat_long |>
+  group_by(Patient_id, Rater, Sex, Age, Metric) |>
+  summarise(
+    Total = sum(Score, na.rm = TRUE),
+    .groups = "drop"
+  )
 ```
 
 
-## Mixed effect model
+### dat_mean_patient
 
-```{r}
-library(lmerTest)
+```{r mean of pt score}
+dat_mean_patient <- dat_total_rater |>
+  group_by(Patient_id, Sex, Age) |>
+  summarise(
+    mean_total = mean(Total, na.rm = TRUE),
+    .groups = "drop"
+  )
+```
 
-# 1. Center age
-dat$Age_c <- as.numeric(scale(dat$Age, center = TRUE, scale = FALSE))
 
-# convert metric as factor
-dat$Metric <- factor(dat$Metric)
+## 7. Intraclass correlation: reliability of raters
 
-# 2. Fit model
+### Total score ICC
+
+```{r total icc}
+icc_total <- calculate_total_icc(dat_total_rater)
+
+icc_total$results
+```
+
+### Metric specific ICC
+
+```{r metric icc}
+icc_metric <- calculate_metric_icc(dat_metric_specific_rater)
+
+icc_metric
+```
+
+## 8. Linear Mixed effect model
+
+```{r glmer fit}
 fit <- glmer(
   Score ~ Metric +  Position +  Sex + Age_c + Metric * Sex + 
-    (1 | Patient_id),
-  data = dat,
+    (1 | Rater) + (1 | Patient_id),
+  data = dat_model,
   family = binomial
 )
 
@@ -469,34 +465,70 @@ isSingular(fit)
 summary(fit)
 ```
 
-```{r}
-print(x, correlation = TRUE)
+### Correlation plot of fit
+
+```{r Correlation plot}
+cor_matrix <- as.matrix(cov2cor(vcov(fit)))
+
+cor_df <- as.data.frame(as.table(cor_matrix)) |>
+  rename(
+    Parameter1 = Var1,
+    Parameter2 = Var2,
+    Correlation = Freq
+  )
+
+ggplot(cor_df, aes(Parameter1, Parameter2, fill = Correlation)) +
+  geom_tile() +
+  scale_fill_gradient2(
+    limits = c(-1, 1),
+    midpoint = 0
+  ) +
+  coord_fixed() +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1, size = 8),
+    axis.text.y = element_text(size = 8),
+    panel.grid = element_blank()
+  ) +
+  labs(
+    x = NULL,
+    y = NULL,
+    fill = "r"
+  )
 ```
 
+### Model selection with/without the interaction of metric and sex
 
-```{r}
-fit_main <- glmer(
+```{r model selection ANOVA}
+# fit 1: no interaction of metric and sex
+fit1 <- glmer(
   Score ~ Metric + Position + Sex + Age_c +
+    (1 | Rater) + 
     (1 | Patient_id),
-  data = dat,
+  data = dat_model,
   family = binomial
 )
 
-fit_interaction <- glmer(
+# fit 2: with interaction of metric and sex
+fit2 <- glmer(
   Score ~ Metric + Position + Sex + Age_c + Metric * Sex +
+    (1 | Rater) + 
     (1 | Patient_id),
-  data = dat,
+  data = dat_model,
   family = binomial
 )
 
-anova(fit_main, fit_interaction, test = "Chisq")
+# Compare Anova of two fits
+anova(fit1, fit2, test = "Chisq")
+## Interaction is meaningful!
 ```
 
-## Appendix: GWalkR fast exploration
+## 9. Appendix: GWalkR fast exploration
 
 Handy exploration of data using {GWalkR} package. 
 
 ```{r GWalKR app, viewer = "pane"}
 # TODO: Specify the output to view pane, not inline? 
+#| output: false
 gwalkr(data = dat_long)
 ```
