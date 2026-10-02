@@ -1,6 +1,6 @@
 ---
 title: "DPAS光老化量表的重现性研究"
-author: "Lian Rui"
+author: "xxx，xxx，xxx"
 date: "2026-09-24"
 output:
   word_document: default
@@ -8,6 +8,7 @@ output:
   html_document: default
 editor_options:
   chunk_output_type: inline
+bibliography: references.bib
 ---
 
 ```{r setup, include=FALSE}
@@ -22,10 +23,6 @@ knitr::opts_chunk$set(
   fig.show = "asis"
 )
 ```
-
-## 1. Setup
-
-### Packages
 
 ```{r packages, include=FALSE}
 library(tidyverse)
@@ -44,31 +41,34 @@ library(kableExtra)
 library(lmerTest)
 ```
 
-### Global options
-
-### Helper functions
-
-```{r}
+```{r helper functions}
+# path
 utils.path <- "~/DPAS Reproducibility/utils"
-```
 
-
-```{r}
+# function to total ICC
 source(file.path(utils.path, "calculate_total_icc.R"))
 
+# function of ICC by metrics
 source(file.path(utils.path, "calculate_metric_icc.R"))
 ```
 
+## 目的
 
-## 2. Data import
+本研究评估皮肤科不同年资人员（副主任医师、主治医师、住院医师、门诊护士）使用皮肤镜光老化量表（Dermoscopic Photoaging Scale, DPAS）[@isikDevelopmentSkinAging2013a]评估患者光老化的稳定性和重现性。
 
-### Path
+## 方法
+
+随机选取皮肤科48名门诊患者，在皮肤镜下按照DPAS量表要求，评估患者四个部位（前额、左右颧骨、下巴）的11项光老化相关皮损。
+
+采用组内相关系数（Intraclass Correlation Coefficient, ICC）[@kooGuidelineSelectingReporting31] 评估不同年资人员使用DPAS量表评估光老化的可靠性和重现性。
+
+采用线性混合效应Logistic回归（Linear mixed-effects logistic regression）探索性别、年龄、部位和不同光老化皮损的关系。
+
 
 ```{r path}
 path <- "~/DPAS Reproducibility/data"
 ```
 
-### raw_dpas
 
 ```{r raw_dpas import}
 raw_dpas <- read_excel(
@@ -76,7 +76,6 @@ raw_dpas <- read_excel(
 )
 ```
 
-### raw_pt
 
 ```{r raw_pt import}
 raw_pt <- read_excel(
@@ -84,9 +83,6 @@ raw_pt <- read_excel(
 )
 ```
 
-## 3. Data cleaning
-
-### clean_dpas
 
 ```{r clean DPAS col names}
 clean_dpas <- raw_dpas |>
@@ -112,7 +108,6 @@ clean_dpas <- raw_dpas |>
   )
 ```
 
-### clean_dpas_long
 
 ```{r clean DPAS long format}
 clean_dpas_long <- clean_dpas |>
@@ -129,7 +124,6 @@ clean_dpas_long <- clean_dpas |>
   )
 ```
 
-### clean_pt
 
 ```{r rename revalue raw_pt}
 clean_pt <- raw_pt |>
@@ -147,7 +141,6 @@ clean_pt <- raw_pt |>
   )
 ```
 
-### Create canonical(single source of truth) dataset dat_long
 
 ```{r Merge DPAS and pt_info}
 dat_long <- clean_pt |>
@@ -157,33 +150,6 @@ dat_long <- clean_pt |>
   )
 ```
 
-### Create dat_model for logistic mixed model
-
-```{r dat_model}
-dat_model <- dat_long |>
-  mutate(
-    Age_c = Age - mean(Age, na.rm = TRUE),
-    Metric = factor(Metric),
-    Position = factor(Position),
-    Sex = factor(Sex)
-  )
-```
-
-
-## 4. Data quality check
-
-### Missing values
-
-```{r missing value check}
-sapply(dat_long, function(x) sum(is.na(x)))
-```
-### internal structure of dat_long
-
-```{r dat_long structure}
-str(dat_long)
-```
-
-### Change data type of each column
 
 ```{r change column class}
 dat_long <- dat_long %>%
@@ -199,94 +165,22 @@ dat_long <- dat_long %>%
 ```
 
 
-### Data summary
-
-```{r}
-summary(dat_long)
+```{r dat_model}
+dat_model <- dat_long |>
+  mutate(
+    Age_c = Age - mean(Age, na.rm = TRUE),
+    Metric = factor(Metric),
+    Position = factor(Position),
+    Sex = factor(Sex)
+  )
 ```
 
-## 5. Descriptive analysis
+## 结果
 
-In `dat_long`, the columns are: 
-
-```{r colnames dat long}
-colnames(dat_long)
-```
-### Overall framework of descriptive analysis
-
-We can define `Sex`, `Age`, `Rater`, `Position`, `Metric` as predictors and `Score` as outcome. and the description analysis in nature is combination of predictors and the distribution, mean, count etc of outcome. And such predictor combination has some hierarchy, e.g., single variable, bivariates and so on. Create a framework of description analysis
-
-A general, combinatary structure as below: 
-
-```text
-Level 0: Outcome alone
-        │
-        ├── Overall distribution of Score
-        │
-Level 1: Single predictor
-        │
-        ├── Sex
-        ├── Age
-        ├── Rater
-        ├── Position
-        └── Metric
-        │
-Level 2: Two-dimensional descriptions
-        │
-        ├── Predictor × Score
-        ├── Predictor × Predictor
-        └── clinically/design-relevant combinations
-        │
-Level 3: Three-dimensional descriptions
-        │
-        ├── Sex × Position × Score
-        ├── Sex × Metric × Score
-        ├── Rater × Position × Score
-        └── Rater × Metric × Score
-        │
-Level 4: Full / high-dimensional structure
-        │
-        └── Sex × Age × Rater × Position × Metric × Score
-```
-
-But this hierarchy makes the description analysis cumbersome and many of them are not scientific valid. 
-
-### The scientific assumptions and questions behind the data
-
-1. Sex related question: What are the difference of skin photoaging between male and female? 
-
-1.1 Total score difference between male and female
-
-1.2 The total score by facial area (chin, forehead, right-left cheek)
-
-1.3 The overall lesion type difference
-
-1.4 The lesion type by facial area
-
-2. Age related question
-
-2.1 The correlation of score with age and sex
-
-2.2 The score of each facial area correlated with age and sex
-
-2.3 the possible lesion type difference among young and old group and sex
-
-3. Rater related question
-
-3.1 The four scores of each patient by four raters
-
-3.2 The overall distribution of total score by 4 raters
-
-3.3 The distribution of facial area score by 4 raters
-
-3.4 The lesion by four raters
-
-3.5 The lesion by four raters by facial area
-
-### Table 1
+1. 患者的性别和年龄分布
 
 ```{r Table 1}
-table1_df <- dat_long |>
+table1 <- dat_long |>
   dplyr::select(Patient_id, Sex, Age) |>
   dplyr::distinct(Patient_id, .keep_all = TRUE) |>
   gtsummary::tbl_summary(
@@ -298,86 +192,12 @@ table1_df <- dat_long |>
     missing = "ifany"
   ) |>
   gtsummary::add_p() |>
-  tibble::as_tibble()
+  gtsummary::bold_labels()
 
-table1_df
+table1
 ```
 
-
-### Distributions of score by rater sex
-
-```{r score by rater sex, warning=FALSE}
-total_score_by_rater_sex <- dat_long |>
-  group_by(Patient_id, Sex, Age, Rater) |>
-  summarise(total = sum(Score, na.rm = TRUE)) |>
-  ungroup()
-
-# Visualize the distribution of total score
-#| fig-width: 5
-#| fig-height: 3
-#| out-width: 70%
-g<- ggplot(total_score_by_rater_sex, aes(x = total)) +
-  geom_histogram(binwidth = 1, fill = "steelblue", color = "grey") +
-  labs(title = "Distribution of Total Score by rater and sex", x = "Total Score", y = "Count") +
-  theme_minimal() + 
-  facet_grid(Rater ~ Sex)
-
-g
-```
-
-### Mean score by age, sex
-
-```{r average score}
-avg_score <- total_score_by_rater_sex |>
-  group_by(Patient_id, Age, Sex) |>
-  summarise(avg = mean(total, na.rm = TRUE))
-```
-
-```{r avg score boxplot by sex}
-g <- ggplot(avg_score, aes(x = Sex, y= avg, color = Sex)) + 
-  geom_boxplot(show.legend = FALSE) + 
-  geom_point(show.legend = FALSE) + 
-  labs(title = "患者DPAS平均分的分布情况", 
-       subtitle = "患者分数由四个评估人的分数平均得到",
-       x = "性别",
-       y = "DPAS 平均分") + 
-  theme_minimal()
-
-g
-```
-
-```{r compare mean by sex}
-dpas_mean <- avg_score |>
-  group_by(Sex) |>
-  summarise(sex_mean = mean(avg, na.rm = TRUE), 
-            sd = sd(avg, na.rm = TRUE))
-
-g <- ggplot(dpas_mean, aes(x = Sex, y = sex_mean)) + 
-  geom_col(aes(fill = Sex),
-           show.legend = FALSE) + 
-  geom_errorbar(aes(ymin = sex_mean - sd, ymax = sex_mean + sd), 
-                width = 0.1) + 
-  labs(title = "患者DPAS评分均值±SD",
-       y = "患者DPAS评分均值",
-       x = "性别") + 
-  theme_minimal()
-
-g
-```
-
-
-```{r correlation with age}
-
-g <- ggplot(avg_score, aes(x = Age, y= avg, colour = Sex)) + 
-  geom_point(size = 2, alpha = 0.7) +
-  geom_smooth(method = "lm", se = FALSE) +
-  labs(title = "Mean DPAS Score by Age and Sex", x = "Age", y = "Mean DPAS Score") +
-  theme_minimal()
-
-g
-```
-
-### 男女在11项评分中的表现和差别
+2. 男女在11项评分中的表现和差别
 
 ```{r metric by sex}
 avg_score_sex_metric <- dat_long |>
@@ -395,53 +215,21 @@ g <- ggplot(avg_score_sex_metric,
 g
 ```
 
-## 6. Analysis dataset
+3. 患者DPAS评分随年龄的变化趋势
 
-All analysis dataset derived from canonical `dat_long`
+```{r correlation with age}
 
-```text
-dat_long --> |group by id, rater, sex, age, sum| --> dat_total_rater
+g <- ggplot(avg_score, aes(x = Age, y= avg, colour = Sex)) + 
+  geom_point(size = 2, alpha = 0.7) +
+  geom_smooth(method = "lm", se = FALSE) +
+  labs(title = "Mean DPAS Score by Age and Sex", x = "Age", y = "Mean DPAS Score") +
+  theme_minimal()
 
-  dat_total_rater --> |group y id, sex, age, mean| --> dat_mean_patient
-
-```
-
-### dat_total_rater
-
-```{r total score}
-dat_total_rater <- dat_long |>
-  group_by(Patient_id, Rater, Sex, Age) |>
-  summarise(
-    Total = sum(Score, na.rm = TRUE),
-    .groups = "drop"
-  )
-```
-
-### dat_metric_specific_rater
-
-```{r metric specific score}
-dat_metric_specific_rater <- dat_long |>
-  group_by(Patient_id, Rater, Sex, Age, Metric) |>
-  summarise(
-    Total = sum(Score, na.rm = TRUE),
-    .groups = "drop"
-  )
+g
 ```
 
 
-### dat_mean_patient
-
-```{r mean of pt score}
-dat_mean_patient <- dat_total_rater |>
-  group_by(Patient_id, Sex, Age) |>
-  summarise(
-    mean_total = mean(Total, na.rm = TRUE),
-    .groups = "drop"
-  )
-```
-
-
-## 7. Intraclass correlation: reliability of raters
+4. 患者总体评分的ICC重现性
 
 ### Total score ICC
 
@@ -451,7 +239,7 @@ icc_total <- calculate_total_icc(dat_total_rater)
 icc_total$results
 ```
 
-### Metric specific ICC
+5. 患者不同皮损的ICC重现性
 
 ```{r metric icc}
 icc_metric <- calculate_metric_icc(dat_metric_specific_rater)
@@ -459,7 +247,7 @@ icc_metric <- calculate_metric_icc(dat_metric_specific_rater)
 icc_metric
 ```
 
-## 8. Linear Mixed effect model
+6. 线性混合效应Logistic回归
 
 ```{r glmer fit, echo=FALSE}
 fit <- glmer(
@@ -473,4 +261,8 @@ fit <- glmer(
 isSingular(fit)
 summary(fit)
 ```
+
+## 结论
+
+## 参考文献
 
