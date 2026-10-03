@@ -267,7 +267,6 @@ g
 4. 患者总体评分的ICC重现性
 
 
-
 ```{r total icc}
 icc_total <- calculate_total_icc(dat_total_rater)
 
