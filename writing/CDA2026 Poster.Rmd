@@ -39,6 +39,9 @@ library(DataExplorer)
 library(gtsummary) # Table 1
 library(kableExtra)
 library(lmerTest)
+library(dplyr)
+library(ggplot2)
+library(broom.mixed)
 ```
 
 ```{r helper functions}
@@ -165,6 +168,38 @@ dat_long <- dat_long %>%
 ```
 
 
+```{r patient mean score}
+# Mean score from four rater of each site, each metric 
+avg_score_patient_position_metric <- dat_long |>
+  group_by(Patient_id, Age, Sex, Position, Metric) |>
+  summarise(avg_score = mean(Score, na.rm = TRUE))
+
+# Sum of all the 44 scores each patient to get total score
+total_score <- avg_score_patient_position_metric |>
+  group_by(Patient_id, Age, Sex) |>
+  summarise(total_score = sum(avg_score, na.rm = TRUE))
+```
+
+
+```{r total score}
+dat_total_rater <- dat_long |>
+  group_by(Patient_id, Rater, Sex, Age) |>
+  summarise(
+    Total = sum(Score, na.rm = TRUE),
+    .groups = "drop"
+  )
+```
+
+```{r metric specific score}
+dat_metric_specific_rater <- dat_long |>
+  group_by(Patient_id, Rater, Sex, Age, Metric) |>
+  summarise(
+    Total = sum(Score, na.rm = TRUE),
+    .groups = "drop"
+  )
+```
+
+
 ```{r dat_model}
 dat_model <- dat_long |>
   mutate(
@@ -219,7 +254,7 @@ g
 
 ```{r correlation with age}
 
-g <- ggplot(avg_score, aes(x = Age, y= avg, colour = Sex)) + 
+g <- ggplot(total_score, aes(x = Age, y= total_score, colour = Sex)) + 
   geom_point(size = 2, alpha = 0.7) +
   geom_smooth(method = "lm", se = FALSE) +
   labs(title = "Mean DPAS Score by Age and Sex", x = "Age", y = "Mean DPAS Score") +
@@ -231,12 +266,56 @@ g
 
 4. 患者总体评分的ICC重现性
 
-### Total score ICC
+
 
 ```{r total icc}
 icc_total <- calculate_total_icc(dat_total_rater)
 
-icc_total$results
+library(dplyr)
+library(gt)
+
+icc_table <- icc_total$results |>
+  transmute(
+    Type = type,
+    `ICC (2,1)` = ICC,
+    `F` = F,
+    `df1` = df1,
+    `df2` = df2,
+    `p` = p,
+    `95% CI` = sprintf(
+      "%.3f–%.3f",
+      `lower bound`,
+      `upper bound`
+    )
+  ) |>
+  gt() |>
+  tab_header(
+    title = "Intraclass Correlation Coefficient"
+  ) |>
+  cols_label(
+    Type = "ICC Type",
+    `ICC (2,1)` = "ICC",
+    F = "F",
+    df1 = "df1",
+    df2 = "df2",
+    p = "p",
+    `95% CI` = "95% CI"
+  ) |>
+  fmt_number(
+    columns = c(`ICC (2,1)`, F, p),
+    decimals = 3
+  ) |>
+  fmt_number(
+    columns = c(df1, df2),
+    decimals = 0
+  ) |>
+  tab_source_note(
+    source_note = "ICC: two-way random-effects, single-measure, absolute agreement [ICC(2,1)]."
+  )
+
+
+
+icc_table
 ```
 
 5. 患者不同皮损的ICC重现性
@@ -244,25 +323,236 @@ icc_total$results
 ```{r metric icc}
 icc_metric <- calculate_metric_icc(dat_metric_specific_rater)
 
-icc_metric
+icc_metric_table <- icc_metric |>
+  mutate(
+    Metric = row_number(),
+    `95% CI` = sprintf(
+      "%.3f–%.3f",
+      Lower,
+      Upper
+    ),
+    P = if_else(
+      P < 0.001,
+      "<0.001",
+      sprintf("%.3f", P)
+    )
+  ) |>
+  select(
+    Metric,
+    ICC2_1,
+    F,
+    df1,
+    df2,
+    P,
+    `95% CI`
+  ) |>
+  gt() |>
+  cols_label(
+    Metric = "Metric",
+    ICC2_1 = "ICC (2,1)",
+    F = "F",
+    df1 = "df1",
+    df2 = "df2",
+    P = "p",
+    `95% CI` = "95% CI"
+  ) |>
+  fmt_number(
+    columns = ICC2_1,
+    decimals = 3
+  ) |>
+  fmt_number(
+    columns = F,
+    decimals = 2
+  ) |>
+  fmt_number(
+    columns = c(df1, df2),
+    decimals = 0
+  ) |>
+  tab_header(
+    title = "Inter-Rater Reliability of Individual DPAS Metrics"
+  ) |>
+  tab_source_note(
+    source_note =
+      "ICC(2,1): two-way random-effects, single-measure, absolute agreement."
+  )
+
+icc_metric_table
 ```
 
 6. 线性混合效应Logistic回归
 
-```{r glmer fit, echo=FALSE}
+Metric 3 was excluded from the multivariable logistic mixed-effects model because no positive observations were observed for this metric, resulting in complete separation and preventing meaningful estimation of its logistic regression coefficient.
+
+```{r}
+dat_model_no3 <- dat_model |>
+  filter(Metric != 3) |>
+  droplevels()
+```
+
+
+```{r}
 fit <- glmer(
-  Score ~ Metric +  Position +  Sex + Age_c + Metric * Sex + 
+  Score ~ Metric + Position + Sex + Age_c + Metric * Sex +
     (1 | Rater) + (1 | Patient_id),
-  data = dat_model,
+  data = dat_model_no3,
   family = binomial
 )
+```
 
-# 3. Check convergence
-isSingular(fit)
-summary(fit)
+
+```{r}
+forest_df <- broom.mixed::tidy(
+  fit,
+  effects = "fixed",
+  conf.int = TRUE,
+  exponentiate = TRUE
+) |>
+  filter(term != "(Intercept)") |>
+  mutate(
+    term = recode(
+      term,
+      `Metric2` = "Metric 2",
+      `Metric4` = "Metric 4",
+      `Metric5` = "Metric 5",
+      `Metric6` = "Metric 6",
+      `Metric7` = "Metric 7",
+      `Metric8` = "Metric 8",
+      `Metric9` = "Metric 9",
+      `Metric10` = "Metric 10",
+      `Metric11` = "Metric 11",
+      `PositionForehead` = "Forehead",
+      `PositionLeft_cheek` = "Left cheek",
+      `PositionRight_cheek` = "Right cheek",
+      `SexMale` = "Male",
+      `Age_c` = "Age (per year)",
+      `Metric2:SexMale` = "Metric 2 × Male",
+      `Metric4:SexMale` = "Metric 4 × Male",
+      `Metric5:SexMale` = "Metric 5 × Male",
+      `Metric6:SexMale` = "Metric 6 × Male",
+      `Metric7:SexMale` = "Metric 7 × Male",
+      `Metric8:SexMale` = "Metric 8 × Male",
+      `Metric9:SexMale` = "Metric 9 × Male",
+      `Metric10:SexMale` = "Metric 10 × Male",
+      `Metric11:SexMale` = "Metric 11 × Male"
+    ),
+    term = factor(
+      term,
+      levels = c(
+        # Metric
+        "Metric 2",
+        "Metric 4",
+        "Metric 5",
+        "Metric 6",
+        "Metric 7",
+        "Metric 8",
+        "Metric 9",
+        "Metric 10",
+        "Metric 11",
+
+        # Position
+        "Forehead",
+        "Left cheek",
+        "Right cheek",
+
+        # Demographics
+        "Male",
+        "Age (per year)",
+
+        # Metric × Sex
+        "Metric 2 × Male",
+        "Metric 4 × Male",
+        "Metric 5 × Male",
+        "Metric 6 × Male",
+        "Metric 7 × Male",
+        "Metric 8 × Male",
+        "Metric 9 × Male",
+        "Metric 10 × Male",
+        "Metric 11 × Male"
+      )
+    )
+  )
+
+forest_df <- forest_df |>
+  mutate(
+    term = factor(
+      term,
+      levels = rev(c(
+        # Demographic and position effects — top
+        "Age (per year)",
+        "Male",
+        "Forehead",
+        "Left cheek",
+        "Right cheek",
+
+        # Metric main effects
+        "Metric 2",
+        "Metric 4",
+        "Metric 5",
+        "Metric 6",
+        "Metric 7",
+        "Metric 8",
+        "Metric 9",
+        "Metric 10",
+        "Metric 11",
+
+        # Metric × Sex interactions — bottom
+        "Metric 2 × Male",
+        "Metric 4 × Male",
+        "Metric 5 × Male",
+        "Metric 6 × Male",
+        "Metric 7 × Male",
+        "Metric 8 × Male",
+        "Metric 9 × Male",
+        "Metric 10 × Male",
+        "Metric 11 × Male"
+      ))
+    )
+  )
+
+ggplot(
+  forest_df,
+  aes(
+    x = estimate,
+    y = term
+  )
+) +
+  geom_vline(
+    xintercept = 1,
+    linetype = "dashed"
+  ) +
+  geom_errorbarh(
+    aes(
+      xmin = conf.low,
+      xmax = conf.high
+    ),
+    height = 0.2
+  ) +
+  geom_point(
+    size = 2.5
+  ) +
+  scale_x_log10() +
+  labs(
+    x = "Odds Ratio (log scale)",
+    y = NULL,
+    title = "Odds Ratios from Logistic Mixed-Effects Model",
+    subtitle = "95% confidence intervals"
+  ) +
+  theme_minimal()
 ```
 
 ## 结论
+
+组间相关系数（ICC）分析显示：不同年资的皮肤科人员，可以高度重现的完成DPAS量表，体现在：1. 不同评估人可以高度重现患者的DPAS总分；2. 在11项具体皮损当中，不同评估人对11项皮损的评估高度重现。
+
+线性混合效应Logistic回归分析显示一下结果：
+
+1. 年龄（Age）： 年龄每增加 1 岁，出现 DPAS 阳性表现的优势比（odds）增加约 2.1%（OR ≈ 1.02，p = 0.005）。
+
+2. 性别（Male）： 在参考 Metric 和参考面部位置下，男性出现阳性表现的 odds 约比女性低 79%（OR = exp(-1.571) ≈ 0.21，p < 0.001）。
+面部位置（Position）： 与参考面部位置相比，额部（Forehead）、左面颊（Left cheek）和右面颊（Right cheek）出现阳性表现的 odds 分别约为 2.40 倍、3.19 倍和 3.06 倍，均 p < 0.001。
+
+3. Metric × 男性（Metric × Male）交互作用： 显著的正向交互项表明，男性与女性之间的差异因 Metric 而异。与参考 Metric 1 相比，Metric 2、4、6、7、8、9、10 和 11 中男性相关的 odds 进一步升高；而 Metric 5 的交互作用无统计学意义（p = 0.270）。因此，男性效应并不是在所有 Metric 中恒定的，性别差异具有 Metric 特异性。
+
 
 ## 参考文献
 
