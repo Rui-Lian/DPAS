@@ -33,6 +33,8 @@ library(DataExplorer)
 library(gtsummary) # Table 1
 library(kableExtra)
 library(lmerTest)
+library(emmeans)
+library(forcats)
 ```
 
 ### Global options
@@ -148,6 +150,28 @@ dat_long <- clean_pt |>
   )
 ```
 
+### Change data type of each column
+
+```{r change column class}
+dat_long <- dat_long %>%
+  mutate(
+    Patient_id = as.character(Patient_id),
+    Sex        = factor(Sex),
+    Age        = as.numeric(Age), # already numeric → no-op, kept for clarity
+    Rater      = factor(Rater),
+    Position   = factor(Position),
+    Metric     = factor(Metric),
+    Score      = as.numeric(Score) # already numeric → no-op, kept for clarity
+  )
+```
+
+
+```{r revalue Metrics}
+# Revalue metrics
+
+```
+
+
 ### Create dat_model for logistic mixed model
 
 ```{r dat_model}
@@ -158,6 +182,11 @@ dat_model <- dat_long |>
     Position = factor(Position),
     Sex = factor(Sex)
   )
+
+# Remove metric 3, which does not occur among all patients
+# Inclusion of metric 3 lead to singular fitting
+dat_model <- dat_model |>
+  filter(!Metric == 3)
 ```
 
 
@@ -174,20 +203,6 @@ sapply(dat_long, function(x) sum(is.na(x)))
 str(dat_long)
 ```
 
-### Change data type of each column
-
-```{r change column class}
-dat_long <- dat_long %>%
-  mutate(
-    Patient_id = as.character(Patient_id),
-    Sex        = factor(Sex),
-    Age        = as.numeric(Age), # already numeric → no-op, kept for clarity
-    Rater      = factor(Rater),
-    Position   = factor(Position),
-    Metric     = factor(Metric),
-    Score      = as.numeric(Score) # already numeric → no-op, kept for clarity
-  )
-```
 
 
 ### Data summary
@@ -378,10 +393,11 @@ avg_score_sex_metric <- dat_long |>
 
 
 g <- ggplot(avg_score_sex_metric, 
-            aes(x = Metric, y = avg_score, fill = Sex)) + 
+            aes(x = fct_rev(Metric), y = avg_score, fill = Sex)) + 
   geom_col(position = position_dodge()) + 
-  facet_wrap(Position~., nrow = 2) + 
-  theme_minimal()
+  coord_flip() + 
+  facet_grid(.~Position) + 
+  theme_minimal() 
 
 g
 ```
@@ -465,37 +481,91 @@ isSingular(fit)
 summary(fit)
 ```
 
-### Correlation plot of fit
+### emmeans summary of fit
 
-```{r Correlation plot}
-cor_matrix <- as.matrix(cov2cor(vcov(fit)))
+```{r}
+emm_sex <- emmeans(
+  fit, 
+  ~ Sex | Metric, 
+  type = "response"
+)
 
-cor_df <- as.data.frame(as.table(cor_matrix)) |>
-  rename(
-    Parameter1 = Var1,
-    Parameter2 = Var2,
-    Correlation = Freq
-  )
+pairs(emm_sex, reverse = TRUE)
+```
 
-ggplot(cor_df, aes(Parameter1, Parameter2, fill = Correlation)) +
-  geom_tile() +
-  scale_fill_gradient2(
-    limits = c(-1, 1),
-    midpoint = 0
-  ) +
-  coord_fixed() +
-  theme_minimal() +
-  theme(
-    axis.text.x = element_text(angle = 45, hjust = 1, size = 8),
-    axis.text.y = element_text(size = 8),
-    panel.grid = element_blank()
-  ) +
-  labs(
-    x = NULL,
-    y = NULL,
-    fill = "r"
+```{r}
+emm_prob <- emmeans(
+  fit,
+  ~ Sex | Metric,
+  type = "response"
+) |>
+  as.data.frame()
+
+metric_order <- emm_prob |>
+  dplyr::group_by(Metric) |>
+  dplyr::summarise(
+    mean_prob = mean(prob),
+    .groups = "drop"
+  ) |>
+  dplyr::arrange(mean_prob) |>
+  dplyr::pull(Metric)
+
+emm_prob <- emm_prob |>
+  dplyr::mutate(
+    Metric = factor(Metric, levels = metric_order)
   )
 ```
+
+```{r}
+library(ggplot2)
+library(scales)
+
+ggplot(
+  emm_prob,
+  aes(x = prob, y = Metric, color = Sex, shape = Sex)
+) +
+  geom_errorbar(
+    aes(
+      xmin = asymp.LCL,
+      xmax = asymp.UCL
+    ),
+    orientation = "y",
+    position = position_dodge(width = 0.5),
+    height = 0.15,
+    linewidth = 0.7
+  ) +
+  geom_point(
+    position = position_dodge(width = 0.5),
+    size = 3
+  ) +
+  geom_hline(
+    yintercept = seq(
+      1.5,
+      nlevels(emm_prob$Metric) - 0.5,
+      by = 1
+    ),
+    color = "grey85",
+    linewidth = 0.5
+  ) +
+  scale_x_continuous(
+    labels = scales::percent_format(accuracy = 1),
+    limits = c(0, 0.75),
+    expand = expansion(mult = c(0.02, 0.05))
+  ) +
+  labs(
+    x = "Estimated probability of lesion presence",
+    y = "DPAS metric",
+    color = "Sex"
+  ) +
+  theme_classic(base_size = 12) +
+  theme(
+    legend.position = "top",
+    axis.line.y = element_blank(),
+    axis.ticks.y = element_blank()
+  )
+```
+
+
 
 ### Model selection with/without the interaction of metric and sex
 
@@ -525,10 +595,3 @@ anova(fit1, fit2, test = "Chisq")
 
 ## 9. Appendix: GWalkR fast exploration
 
-Handy exploration of data using {GWalkR} package. 
-
-```{r GWalKR app, viewer = "pane"}
-# TODO: Specify the output to view pane, not inline? 
-#| output: false
-gwalkr(data = dat_long)
-```
