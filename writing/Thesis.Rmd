@@ -16,7 +16,6 @@ knitr::opts_chunk$set(echo = TRUE)
 
 ## 1. Setup
 
-### Packages
 
 ```{r packages}
 library(tidyverse)
@@ -37,41 +36,32 @@ library(emmeans)
 library(forcats)
 ```
 
-### Global options
 
-### Helper functions
-
-```{r}
+```{r Utility function}
+# Path of utils
 utils.path <- "~/DPAS Reproducibility/utils"
-```
 
-
-```{r}
+# Calculate ICC on the total DPAS score
 source(file.path(utils.path, "calculate_total_icc.R"))
 
+# Calculate the ICC on each metric (lesion)
 source(file.path(utils.path, "calculate_metric_icc.R"))
 ```
 
 
 ## 2. Data import
 
-### Path
 
-```{r path}
+```{r data import}
+# Path of raw data
 path <- "~/DPAS Reproducibility/data"
-```
 
-### raw_dpas
-
-```{r raw_dpas import}
+# Read the DPAS48, 48 patients DPAS by 4 raters
 raw_dpas <- read_excel(
   file.path(path, "DPAS48.xlsx")
 )
-```
 
-### raw_pt
-
-```{r raw_pt import}
+# Read patient age and sex
 raw_pt <- read_excel(
   file.path(path, "DPAS48_pt_info.xls")
 )
@@ -79,9 +69,9 @@ raw_pt <- read_excel(
 
 ## 3. Data cleaning
 
-### clean_dpas
 
-```{r clean DPAS col names}
+```{r clean DPAS}
+# Rename DPAS columns
 clean_dpas <- raw_dpas |>
   rename(
     Patient_id = 患者,
@@ -103,11 +93,8 @@ clean_dpas <- raw_dpas |>
     ~ paste0("Chin", sub("^下", "", .x)),
     matches("^下\\d+$")
   )
-```
 
-### clean_dpas_long
-
-```{r clean DPAS long format}
+# Long format
 clean_dpas_long <- clean_dpas |>
   pivot_longer(
     cols = 3:ncol(clean_dpas),
@@ -120,11 +107,8 @@ clean_dpas_long <- clean_dpas |>
     sep = "(?<=\\D)(?=\\d)",
     convert = TRUE
   )
-```
 
-### clean_pt
-
-```{r rename revalue raw_pt}
+# Cleaning patient info
 clean_pt <- raw_pt |>
   rename(
     Patient_id = 姓名,
@@ -140,19 +124,17 @@ clean_pt <- raw_pt |>
   )
 ```
 
-### Create canonical(single source of truth) dataset dat_long
 
 ```{r Merge DPAS and pt_info}
+# Create canonical dataset, dat_long
+# and join patient info
 dat_long <- clean_pt |>
   left_join(
     clean_dpas_long,
     by = "Patient_id"
   )
-```
 
-### Change data type of each column
-
-```{r change column class}
+# data class of each column 
 dat_long <- dat_long %>%
   mutate(
     Patient_id = as.character(Patient_id),
@@ -168,26 +150,22 @@ dat_long <- dat_long %>%
 
 ```{r revalue Metrics}
 # Revalue metrics
-
+dat_long <- dat_long |>
+  mutate(Metric = case_when(
+    Metric == "1" ~ "皮肤黄染", 
+    Metric == "2" ~ "黄色丘疹",
+    Metric == "3" ~ "白色线性区域",
+    Metric == "4" ~ "雀斑样痣",
+    Metric == "5" ~ "色素减退-色素沉着斑",
+    Metric == "6" ~ "毛细血管扩张",
+    Metric == "7" ~ "脂溢性角化",
+    Metric == "8" ~ "老年性粉刺",
+    Metric == "9" ~ "深皱纹",
+    Metric == "10" ~ "浅表皱纹",
+    Metric == "11" ~ "网状皱纹"
+  ))
 ```
 
-
-### Create dat_model for logistic mixed model
-
-```{r dat_model}
-dat_model <- dat_long |>
-  mutate(
-    Age_c = Age - mean(Age, na.rm = TRUE),
-    Metric = factor(Metric),
-    Position = factor(Position),
-    Sex = factor(Sex)
-  )
-
-# Remove metric 3, which does not occur among all patients
-# Inclusion of metric 3 lead to singular fitting
-dat_model <- dat_model |>
-  filter(!Metric == 3)
-```
 
 
 ## 4. Data quality check
@@ -468,6 +446,25 @@ icc_metric
 
 ## 8. Linear Mixed effect model
 
+### Create dat_model for logistic mixed model
+
+```{r dat_model}
+dat_model <- dat_long |>
+  mutate(
+    Age_c = Age - mean(Age, na.rm = TRUE),
+    Metric = factor(Metric),
+    Position = factor(Position),
+    Sex = factor(Sex)
+  )
+
+# Remove metric 3, which does not occur among all patients
+# Inclusion of metric 3 lead to singular fitting
+dat_model <- dat_model |>
+  filter(!Metric == 3)
+```
+
+
+
 ```{r glmer fit}
 fit <- glmer(
   Score ~ Metric +  Position +  Sex + Age_c + Metric * Sex + 
@@ -565,7 +562,9 @@ ggplot(
   )
 ```
 
-
+$$
+\text{OR} = \frac{P}{1 - P}
+$$
 
 ### Model selection with/without the interaction of metric and sex
 
