@@ -67,8 +67,6 @@ raw_pt <- read_excel(
 )
 ```
 
-## 3. Data cleaning
-
 
 ```{r clean DPAS}
 # Rename DPAS columns
@@ -152,10 +150,10 @@ dat_long <- dat_long %>%
 # Revalue metrics
 dat_long <- dat_long |>
   mutate(Metric = case_when(
-    Metric == "1" ~ "皮肤黄染", 
+    Metric == "1" ~ "皮肤暗黄", 
     Metric == "2" ~ "黄色丘疹",
-    Metric == "3" ~ "白色线性区域",
-    Metric == "4" ~ "雀斑样痣",
+    Metric == "3" ~ "皮肤萎缩",
+    Metric == "4" ~ "痣",
     Metric == "5" ~ "色素减退-色素沉着斑",
     Metric == "6" ~ "毛细血管扩张",
     Metric == "7" ~ "脂溢性角化",
@@ -167,107 +165,20 @@ dat_long <- dat_long |>
 ```
 
 
-
-## 4. Data quality check
-
-### Missing values
-
-```{r missing value check}
-sapply(dat_long, function(x) sum(is.na(x)))
-```
-### internal structure of dat_long
-
 ```{r dat_long structure}
 str(dat_long)
 ```
 
 
+```{r missing value check}
+sapply(dat_long, function(x) sum(is.na(x)))
+```
 
-### Data summary
 
-```{r}
+```{r data summary}
 summary(dat_long)
 ```
 
-## 5. Descriptive analysis
-
-In `dat_long`, the columns are: 
-
-```{r colnames dat long}
-colnames(dat_long)
-```
-### Overall framework of descriptive analysis
-
-We can define `Sex`, `Age`, `Rater`, `Position`, `Metric` as predictors and `Score` as outcome. and the description analysis in nature is combination of predictors and the distribution, mean, count etc of outcome. And such predictor combination has some hierarchy, e.g., single variable, bivariates and so on. Create a framework of description analysis
-
-A general, combinatary structure as below: 
-
-```text
-Level 0: Outcome alone
-        │
-        ├── Overall distribution of Score
-        │
-Level 1: Single predictor
-        │
-        ├── Sex
-        ├── Age
-        ├── Rater
-        ├── Position
-        └── Metric
-        │
-Level 2: Two-dimensional descriptions
-        │
-        ├── Predictor × Score
-        ├── Predictor × Predictor
-        └── clinically/design-relevant combinations
-        │
-Level 3: Three-dimensional descriptions
-        │
-        ├── Sex × Position × Score
-        ├── Sex × Metric × Score
-        ├── Rater × Position × Score
-        └── Rater × Metric × Score
-        │
-Level 4: Full / high-dimensional structure
-        │
-        └── Sex × Age × Rater × Position × Metric × Score
-```
-
-But this hierarchy makes the description analysis cumbersome and many of them are not scientific valid. 
-
-### The scientific assumptions and questions behind the data
-
-1. Sex related question: What are the difference of skin photoaging between male and female? 
-
-1.1 Total score difference between male and female
-
-1.2 The total score by facial area (chin, forehead, right-left cheek)
-
-1.3 The overall lesion type difference
-
-1.4 The lesion type by facial area
-
-2. Age related question
-
-2.1 The correlation of score with age and sex
-
-2.2 The score of each facial area correlated with age and sex
-
-2.3 the possible lesion type difference among young and old group and sex
-
-3. Rater related question
-
-3.1 The four scores of each patient by four raters
-
-3.2 The overall distribution of total score by 4 raters
-
-3.3 The distribution of facial area score by 4 raters
-
-3.4 The lesion by four raters
-
-3.5 The lesion by four raters by facial area
-
-### Table 1
 
 ```{r Table 1}
 table1_df <- dat_long |>
@@ -288,110 +199,49 @@ table1_df
 ```
 
 
-### Distributions of score by rater sex
-
-```{r score by rater sex}
-total_score_by_rater_sex <- dat_long |>
-  group_by(Patient_id, Sex, Age, Rater) |>
-  summarise(total = sum(Score, na.rm = TRUE)) |>
-  ungroup()
-
-# Visualize the distribution of total score
-#| fig-width: 5
-#| fig-height: 3
-#| out-width: 70%
-g<- ggplot(total_score_by_rater_sex, aes(x = total)) +
-  geom_histogram(binwidth = 1, fill = "steelblue", color = "grey") +
-  labs(title = "Distribution of Total Score by rater and sex", x = "Total Score", y = "Count") +
-  theme_minimal() + 
-  facet_grid(Rater ~ Sex)
-
-g
-```
-
-### Mean score by age, sex
-
-```{r average score}
-avg_score <- total_score_by_rater_sex |>
-  group_by(Patient_id, Age, Sex) |>
-  summarise(avg = mean(total, na.rm = TRUE))
-```
-
-```{r avg score boxplot by sex}
-g <- ggplot(avg_score, aes(x = Sex, y= avg, color = Sex)) + 
-  geom_boxplot(show.legend = FALSE) + 
-  geom_point(show.legend = FALSE) + 
-  labs(title = "患者DPAS平均分的分布情况", 
-       subtitle = "患者分数由四个评估人的分数平均得到",
-       x = "性别",
-       y = "DPAS 平均分") + 
-  theme_minimal()
-
-g
-```
-
-```{r compare mean by sex}
-dpas_mean <- avg_score |>
-  group_by(Sex) |>
-  summarise(sex_mean = mean(avg, na.rm = TRUE), 
-            sd = sd(avg, na.rm = TRUE))
-
-g <- ggplot(dpas_mean, aes(x = Sex, y = sex_mean)) + 
-  geom_col(aes(fill = Sex),
-           show.legend = FALSE) + 
-  geom_errorbar(aes(ymin = sex_mean - sd, ymax = sex_mean + sd), 
-                width = 0.1) + 
-  labs(title = "患者DPAS评分均值±SD",
-       y = "患者DPAS评分均值",
-       x = "性别") + 
-  theme_minimal()
-
-g
-```
-
-
-```{r correlation with age}
-
-g <- ggplot(avg_score, aes(x = Age, y= avg, colour = Sex)) + 
-  geom_point(size = 2, alpha = 0.7) +
-  geom_smooth(method = "lm", se = FALSE) +
-  labs(title = "Mean DPAS Score by Age and Sex", x = "Age", y = "Mean DPAS Score") +
-  theme_minimal()
-
-g
-```
 
 ### 男女在11项评分中的表现和差别
 
 ```{r metric by sex}
-avg_score_sex_metric <- dat_long |>
+score_sex_position_metric <- dat_long |>
   group_by(Sex, Position, Metric) |>
-  summarise(avg_score = mean(Score)) |>
-  ungroup()
+  summarise(n = sum(Score)/4) |>
+  mutate(pct = n /48)
 
 
-g <- ggplot(avg_score_sex_metric, 
-            aes(x = fct_rev(Metric), y = avg_score, fill = Sex)) + 
-  geom_col(position = position_dodge()) + 
-  coord_flip() + 
-  facet_grid(.~Position) + 
-  theme_minimal() 
+g <- ggplot(score_sex_position_metric,
+            aes(x = fct_rev(Metric), y = pct, fill = Sex)) +
+  geom_col(position = position_dodge(width = 0.9)) +
+  geom_text(
+    aes(label = percent(pct, accuracy = 1)),
+    position = position_dodge(width = 0.9),
+    hjust = -0.1,          # push labels just past the bar tip
+    size = 3
+  ) +
+  scale_fill_discrete_qualitative(palette = "Harmonic") + 
+  scale_y_continuous(
+    labels = percent_format(accuracy = 1),
+    breaks = seq(0, 1, 0.2),
+    expand = expansion(mult = c(0, 0.1)), # room for labels at the end
+    limits = c(0, 0.5)
+  ) +
+  labs(
+    title = "不同光老化皮损类型在男女四个部位的发生率",
+    x = "光老化类型",
+    y = "发生率"
+  ) + 
+  coord_flip() +
+  facet_grid(. ~ Position) +
+  theme_classic(base_size = 12) +
+  theme(
+    legend.position = "top",
+    axis.line.y = element_blank(),
+    axis.ticks.y = element_blank()
+  )
 
 g
 ```
 
-## 6. Analysis dataset
-
-All analysis dataset derived from canonical `dat_long`
-
-```text
-dat_long --> |group by id, rater, sex, age, sum| --> dat_total_rater
-
-  dat_total_rater --> |group y id, sex, age, mean| --> dat_mean_patient
-
-```
-
-### dat_total_rater
 
 ```{r total score}
 dat_total_rater <- dat_long |>
@@ -402,7 +252,14 @@ dat_total_rater <- dat_long |>
   )
 ```
 
-### dat_metric_specific_rater
+
+```{r total icc}
+icc_total <- calculate_total_icc(dat_total_rater)
+
+icc_total$results
+```
+
+### Metric specific ICC
 
 ```{r metric specific score}
 dat_metric_specific_rater <- dat_long |>
@@ -413,30 +270,6 @@ dat_metric_specific_rater <- dat_long |>
   )
 ```
 
-
-### dat_mean_patient
-
-```{r mean of pt score}
-dat_mean_patient <- dat_total_rater |>
-  group_by(Patient_id, Sex, Age) |>
-  summarise(
-    mean_total = mean(Total, na.rm = TRUE),
-    .groups = "drop"
-  )
-```
-
-
-## 7. Intraclass correlation: reliability of raters
-
-### Total score ICC
-
-```{r total icc}
-icc_total <- calculate_total_icc(dat_total_rater)
-
-icc_total$results
-```
-
-### Metric specific ICC
 
 ```{r metric icc}
 icc_metric <- calculate_metric_icc(dat_metric_specific_rater)
@@ -464,10 +297,9 @@ dat_model <- dat_model |>
 ```
 
 
-
 ```{r glmer fit}
 fit <- glmer(
-  Score ~ Metric +  Position +  Sex + Age_c + Metric * Sex + 
+  Score ~ Position + Age + Metric * Sex  + 
     (1 | Rater) + (1 | Patient_id),
   data = dat_model,
   family = binomial
@@ -541,14 +373,16 @@ ggplot(
       nlevels(emm_prob$Metric) - 0.5,
       by = 1
     ),
-    color = "grey85",
-    linewidth = 0.5
+    color = "grey90",
+    linewidth = 0.3,
+    linetype = "dashed"
   ) +
   scale_x_continuous(
     labels = scales::percent_format(accuracy = 1),
     limits = c(0, 0.75),
     expand = expansion(mult = c(0.02, 0.05))
   ) +
+  scale_color_discrete_qualitative(palette = "Harmonic") + 
   labs(
     x = "Estimated probability of lesion presence",
     y = "DPAS metric",
@@ -562,9 +396,6 @@ ggplot(
   )
 ```
 
-$$
-\text{OR} = \frac{P}{1 - P}
-$$
 
 ### Model selection with/without the interaction of metric and sex
 
@@ -592,5 +423,5 @@ anova(fit1, fit2, test = "Chisq")
 ## Interaction is meaningful!
 ```
 
-## 9. Appendix: GWalkR fast exploration
+
 
