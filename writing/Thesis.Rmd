@@ -1,20 +1,30 @@
 ---
-title: "DPAS Reproducibility Thesis"
-author: "Lian Rui"
+title: "DPAS光老化量表的重现性研究"
+author: "xxx，xxx，xxx"
 date: "2026-09-24"
 output:
-  html_document: default
-  pdf_document: default
   word_document: default
+  pdf_document: default
+  html_document: default
 editor_options:
   chunk_output_type: inline
+bibliography: references.bib
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
-```
+knitr::opts_chunk$set(
+  echo = FALSE,
+  eval = TRUE,
+	message = FALSE,
+	warning = FALSE,
+	cache = TRUE,
+	include = TRUE,
+  results = "markup",
+  fig.show = "asis"
+)
 
-## 1. Setup
+
+```
 
 
 ```{r packages}
@@ -27,13 +37,20 @@ library(ggplot2)
 library(colorspace)
 library(showtext)
 showtext_auto()
-library(GWalkR) # Tabuleu like, TODO: furrther explore
+library(GWalkR) # Tabuleu like, TODO: further explore
 library(DataExplorer) 
 library(gtsummary) # Table 1
 library(kableExtra)
 library(lmerTest)
 library(emmeans)
 library(forcats)
+library(scales)
+```
+
+```{r}
+theme_set(
+  theme_minimal(base_size = 14)
+)
 ```
 
 
@@ -47,9 +64,6 @@ source(file.path(utils.path, "calculate_total_icc.R"))
 # Calculate the ICC on each metric (lesion)
 source(file.path(utils.path, "calculate_metric_icc.R"))
 ```
-
-
-## 2. Data import
 
 
 ```{r data import}
@@ -148,6 +162,16 @@ dat_long <- dat_long %>%
 
 ```{r revalue Metrics}
 # Revalue metrics
+
+# Revalue sex
+dat_long <- dat_long |>
+  mutate(Sex = case_when(
+    Sex == "Female" ~ "女",
+    Sex == "Male" ~ "男"
+  ))
+
+
+# 11 lesions metrics
 dat_long <- dat_long |>
   mutate(Metric = case_when(
     Metric == "1" ~ "皮肤暗黄", 
@@ -162,22 +186,30 @@ dat_long <- dat_long |>
     Metric == "10" ~ "浅表皱纹",
     Metric == "11" ~ "网状皱纹"
   ))
+
+# Revalue the 4 positions
+dat_long <- dat_long |>
+  mutate(Position = case_when(
+    Position == "Chin" ~ "下颌",
+    Position == "Forehead" ~ "前额",
+    Position == "Left_cheek" ~ "左颧骨",
+    Position == "Right_cheek" ~ "右颧骨"
+  ))
 ```
 
 
-```{r dat_long structure}
-str(dat_long)
-```
 
+## 目的
 
-```{r missing value check}
-sapply(dat_long, function(x) sum(is.na(x)))
-```
+本研究评估皮肤科不同年资人员（副主任医师、主治医师、住院医师、门诊护士）使用皮肤镜光老化量表（Dermoscopic Photoaging Scale, DPAS）[@isikDevelopmentSkinAging2013a]评估患者光老化的稳定性和重现性。
 
+## 方法
 
-```{r data summary}
-summary(dat_long)
-```
+随机选取皮肤科48名门诊患者，在皮肤镜下按照DPAS量表要求，评估患者四个部位（前额、左右颧骨、下巴）的11项光老化相关皮损。
+
+采用组内相关系数（Intraclass Correlation Coefficient, ICC）[@kooGuidelineSelectingReporting31] 评估不同年资人员使用DPAS量表评估光老化的可靠性和重现性。
+
+采用线性混合效应Logistic回归（Linear mixed-effects logistic regression）探索性别、年龄、部位和不同光老化皮损的关系。
 
 
 ```{r Table 1}
@@ -202,7 +234,7 @@ table1_df
 
 ### 男女在11项评分中的表现和差别
 
-```{r metric by sex}
+```{r metric by sex,fig.width=7, fig.asp=.618, out.width="100%"}
 score_sex_position_metric <- dat_long |>
   group_by(Sex, Position, Metric) |>
   summarise(n = sum(Score)/4) |>
@@ -228,7 +260,8 @@ g <- ggplot(score_sex_position_metric,
   labs(
     title = "不同光老化皮损类型在男女四个部位的发生率",
     x = "光老化类型",
-    y = "发生率"
+    y = "发生率",
+    color = "性别"
   ) + 
   coord_flip() +
   facet_grid(. ~ Position) +
@@ -236,7 +269,8 @@ g <- ggplot(score_sex_position_metric,
   theme(
     legend.position = "top",
     axis.line.y = element_blank(),
-    axis.ticks.y = element_blank()
+    axis.ticks.y = element_blank(),
+    strip.background = element_blank()
   )
 
 g
@@ -277,9 +311,6 @@ icc_metric <- calculate_metric_icc(dat_metric_specific_rater)
 icc_metric
 ```
 
-## 8. Linear Mixed effect model
-
-### Create dat_model for logistic mixed model
 
 ```{r dat_model}
 dat_model <- dat_long |>
@@ -306,23 +337,24 @@ fit <- glmer(
 )
 
 # 3. Check convergence
-isSingular(fit)
-summary(fit)
+# isSingular(fit)
+# summary(fit)
 ```
 
 ### emmeans summary of fit
 
 ```{r}
-emm_sex <- emmeans(
-  fit, 
-  ~ Sex | Metric, 
-  type = "response"
-)
-
-pairs(emm_sex, reverse = TRUE)
+# emm_sex <- emmeans(
+#   fit, 
+#   ~ Sex | Metric, 
+#   type = "response"
+# )
+# 
+# pairs(emm_sex, reverse = TRUE)
 ```
 
-```{r}
+```{r fig.width=6, fig.asp=.618, out.width="100%"}
+# Estimated probabilities
 emm_prob <- emmeans(
   fit,
   ~ Sex | Metric,
@@ -330,6 +362,23 @@ emm_prob <- emmeans(
 ) |>
   as.data.frame()
 
+# Sex comparison within each metric
+sex_p <- emmeans(
+  fit,
+  ~ Sex | Metric
+) |>
+  pairs() |>
+  summary(infer = TRUE) |>
+  as.data.frame() |>
+  dplyr::mutate(
+    p_label = dplyr::case_when(
+      p.value < 0.001 ~ "p < 0.001",
+      TRUE ~ paste0("p = ", format.pval(p.value, digits = 2, eps = 0.001))
+    )
+  ) |>
+  dplyr::select(Metric, p_label)
+
+# Order metrics by mean probability
 metric_order <- emm_prob |>
   dplyr::group_by(Metric) |>
   dplyr::summarise(
@@ -343,15 +392,16 @@ emm_prob <- emm_prob |>
   dplyr::mutate(
     Metric = factor(Metric, levels = metric_order)
   )
-```
 
-```{r}
-library(ggplot2)
-library(scales)
+# Make p-value data frame use the same factor order
+sex_p <- sex_p |>
+  dplyr::mutate(
+    Metric = factor(Metric, levels = metric_order)
+  )
 
 ggplot(
   emm_prob,
-  aes(x = prob, y = Metric, color = Sex, shape = Sex)
+  aes(x = prob, y = Metric, color = Sex)
 ) +
   geom_errorbar(
     aes(
@@ -361,9 +411,10 @@ ggplot(
     orientation = "y",
     position = position_dodge(width = 0.5),
     height = 0.15,
-    linewidth = 0.7
+    linewidth = 0.4
   ) +
   geom_point(
+    aes(shape = Sex),
     position = position_dodge(width = 0.5),
     size = 3
   ) +
@@ -377,16 +428,29 @@ ggplot(
     linewidth = 0.3,
     linetype = "dashed"
   ) +
+  geom_text(
+    data = sex_p,
+    aes(
+      x = 0.78,
+      y = Metric,
+      label = p_label
+    ),
+    inherit.aes = FALSE,
+    hjust = 0,
+    color = "black",
+    size = 3.2
+  ) +
   scale_x_continuous(
     labels = scales::percent_format(accuracy = 1),
-    limits = c(0, 0.75),
-    expand = expansion(mult = c(0.02, 0.05))
+    limits = c(0, 0.90),
+    expand = expansion(mult = c(0.02, 0.02))
   ) +
-  scale_color_discrete_qualitative(palette = "Harmonic") + 
+  scale_color_discrete_qualitative(palette = "Harmonic") +
   labs(
-    x = "Estimated probability of lesion presence",
-    y = "DPAS metric",
-    color = "Sex"
+    x = "发生率",
+    y = "DPAS光老化类型",
+    color = "性别",
+    shape = "性别"
   ) +
   theme_classic(base_size = 12) +
   theme(
@@ -396,32 +460,18 @@ ggplot(
   )
 ```
 
+## 结论
 
-### Model selection with/without the interaction of metric and sex
+组间相关系数（ICC）分析显示：不同年资的皮肤科人员，可以高度重现的完成DPAS量表，体现在：1. 不同评估人可以高度重现患者的DPAS总分；2. 在11项具体皮损当中，不同评估人对11项皮损的评估高度重现。
 
-```{r model selection ANOVA}
-# fit 1: no interaction of metric and sex
-fit1 <- glmer(
-  Score ~ Metric + Position + Sex + Age_c +
-    (1 | Rater) + 
-    (1 | Patient_id),
-  data = dat_model,
-  family = binomial
-)
+线性混合效应Logistic回归分析显示一下结果：
 
-# fit 2: with interaction of metric and sex
-fit2 <- glmer(
-  Score ~ Metric + Position + Sex + Age_c + Metric * Sex +
-    (1 | Rater) + 
-    (1 | Patient_id),
-  data = dat_model,
-  family = binomial
-)
+1. 年龄（Age）： 年龄每增加 1 岁，出现 DPAS 阳性表现的优势比（odds）增加约 2.1%（OR ≈ 1.02，p = 0.005）。
 
-# Compare Anova of two fits
-anova(fit1, fit2, test = "Chisq")
-## Interaction is meaningful!
-```
+2. 性别（Male）： 在参考 Metric 和参考面部位置下，男性出现阳性表现的 odds 约比女性低 79%（OR = exp(-1.571) ≈ 0.21，p < 0.001）。
+面部位置（Position）： 与参考面部位置相比，额部（Forehead）、左面颊（Left cheek）和右面颊（Right cheek）出现阳性表现的 odds 分别约为 2.40 倍、3.19 倍和 3.06 倍，均 p < 0.001。
+
+3. Metric × 男性（Metric × Male）交互作用： 显著的正向交互项表明，男性与女性之间的差异因 Metric 而异。与参考 Metric 1 相比，Metric 2、4、6、7、8、9、10 和 11 中男性相关的 odds 进一步升高；而 Metric 5 的交互作用无统计学意义（p = 0.270）。因此，男性效应并不是在所有 Metric 中恒定的，性别差异具有 Metric 特异性。
 
 
-
+## 参考文献
