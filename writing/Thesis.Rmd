@@ -290,7 +290,19 @@ dat_total_rater <- dat_long |>
 ```{r total icc}
 icc_total <- calculate_total_icc(dat_total_rater)
 
-icc_total$results
+icc_result <- as.data.frame(icc_total$results)
+
+icc_result <- icc_result|>
+  filter(type == "ICC2")%>% 
+  select(ICC, p, `lower bound`, `upper bound`)
+
+icc_result$p <- "<0.001"
+
+icc_result |>
+  kbl(align = "c",
+      format = "pandoc",
+      caption = "四个评估人对患者DPAS总分的ICC可靠性") %>%
+  kable_styling(position = "center")
 ```
 
 ### Metric specific ICC
@@ -308,7 +320,13 @@ dat_metric_specific_rater <- dat_long |>
 ```{r metric icc}
 icc_metric <- calculate_metric_icc(dat_metric_specific_rater)
 
-icc_metric
+icc_metric$P <- "P < 0.001"
+
+icc_metric |>
+  kbl(align = "c",
+      format = "pandoc",
+      caption = "四个评估人对患者分项皮损的ICC可靠性") %>%
+  kable_styling(position = "center")
 ```
 
 
