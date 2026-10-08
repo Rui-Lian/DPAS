@@ -1,5 +1,5 @@
 ---
-title: "DPAS光老化量表的重现性研究"
+title: "皮肤镜下光老化量表的重现性研究"
 author: "xxx，xxx，xxx"
 date: "2026-09-24"
 output:
@@ -11,19 +11,22 @@ editor_options:
 bibliography: references.bib
 ---
 
+
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(
-  echo = FALSE,
-  eval = TRUE,
+  echo = FALSE, # hide R source code from the final document, but run it
+  eval = TRUE, # Actually execute the code
 	message = FALSE,
 	warning = FALSE,
 	cache = TRUE,
 	include = TRUE,
   results = "markup",
-  fig.show = "asis"
+  fig.show = "asis" # All figures placed where they are produced, 
+  ## hold: all figures are held and placed at the end of the chunk
+  ## Animate: combine multiple plots into an animation!
 )
 
-
+options(digits = 3)
 ```
 
 
@@ -45,9 +48,12 @@ library(lmerTest)
 library(emmeans)
 library(forcats)
 library(scales)
+library(flextable)
+library(officer)
 ```
 
-```{r}
+
+```{r ggplot theme set}
 theme_set(
   theme_minimal(base_size = 14)
 )
@@ -90,7 +96,26 @@ clean_dpas <- raw_dpas |>
     Rater = 监察人
   ) |>
   rename_with(
+    # `rename_with` accepts function: 
+    # dplyr/purrr accept one-sided function, function has only the RHS
+    # `~...` R shorthand for an anonymous function 
+    # `~` means: Define a function, and use `.x` as its input
+    
+    # `.x` represents the current input value passed to the function
+    # Equivalent to: 
+    # function(.x) {
+    #   paste0("Forehead", sub("^额", "", .x))
+    # }
+    
+    # Inside the paste0: 
+    # for the current input column name .x
+    # find 额 at the beginning of the string (^额)
+    # and replace it with nothing ("")
+    # leaving the rest of the column name unchanged.
     ~ paste0("Forehead", sub("^额", "", .x)),
+    
+    # select column start with `额`
+    # followed by one or more digits
     matches("^额\\d+$")
   ) |>
   rename_with(
@@ -160,7 +185,7 @@ dat_long <- dat_long %>%
 ```
 
 
-```{r revalue Metrics}
+```{r revalue}
 # Revalue metrics
 
 # Revalue sex
@@ -169,7 +194,6 @@ dat_long <- dat_long |>
     Sex == "Female" ~ "女",
     Sex == "Male" ~ "男"
   ))
-
 
 # 11 lesions metrics
 dat_long <- dat_long |>
@@ -197,19 +221,21 @@ dat_long <- dat_long |>
   ))
 ```
 
-
-
 ## 目的
 
-本研究评估皮肤科不同年资人员（副主任医师、主治医师、住院医师、门诊护士）使用皮肤镜光老化量表（Dermoscopic Photoaging Scale, DPAS）[@isikDevelopmentSkinAging2013a]评估患者光老化的稳定性和重现性。
+    在皮肤科临床实践中需要稳定、量化的评估患者的诸多光老化皮损表现[@zhaoNoninvasiveAssessmentMethods2025]。本研究通过皮肤镜光老化量表（Dermoscopic Photoaging Scale, DPAS）[@isikDevelopmentSkinAging2013a]，探索在高原、高海拔区域的高老化皮损特征和性别差异。同时，通过组内相关系数分析（Intraclass Correlation Coefficient, ICC）[@IntraclassCorrelationsUses]探讨皮肤科不同职级人员实施DPAS量表的的可靠性和重现性。
 
 ## 方法
 
-随机选取皮肤科48名门诊患者，在皮肤镜下按照DPAS量表要求，评估患者四个部位（前额、左右颧骨、下巴）的11项光老化相关皮损。
+    随机选取皮肤科48名门诊患者，采集前额，左右颧骨区域和下巴正中的皮肤镜照片，按照DPAS量表要求，评估患者四个部位（前额、左右颧骨、下巴）的光老化相关皮损。科室四个职级人员（副主任医师、主治医师、住院医师、护士）分别按照DPAS量表要求读片。数据处理包括：
 
-采用组内相关系数（Intraclass Correlation Coefficient, ICC）[@kooGuidelineSelectingReporting31] 评估不同年资人员使用DPAS量表评估光老化的可靠性和重现性。
+1.  统计不同光老化皮损在男女人群的分布特征
+2.  采用组内相关系数（Intraclass Correlation Coefficient, ICC）[@kooGuidelineSelectingReporting31] 评估不同年资人员使用DPAS量表评估光老化的可靠性和重现性。
+3.  采用线性混合效应逻辑回归（Linear mixed-effects logistic regression）探索性别、部位和不同光老化皮损的关系。
 
-采用线性混合效应Logistic回归（Linear mixed-effects logistic regression）探索性别、年龄、部位和不同光老化皮损的关系。
+## 结果
+
+### 1. 患者性别年龄
 
 
 ```{r Table 1}
@@ -227,12 +253,21 @@ table1_df <- dat_long |>
   gtsummary::add_p() |>
   tibble::as_tibble()
 
-table1_df
+table1_df |>
+  flextable() |>
+  align(align = "center", part = "all") |>
+  hline(
+    i = nrow(table1_df),
+    border = fp_border(width = 2),
+    part = "body"
+  ) |>
+  set_caption("患者性别年龄") |>
+  autofit()
 ```
 
 
+### 2. 光老化皮损的发生率
 
-### 男女在11项评分中的表现和差别
 
 ```{r metric by sex,fig.width=7, fig.asp=.618, out.width="100%"}
 score_sex_position_metric <- dat_long |>
@@ -277,6 +312,9 @@ g
 ```
 
 
+    如上图，毛细血管扩张、色斑，脂溢性角化和深浅皱纹是本研究人群的光老化特征，男女存在不同的皮损类型。
+
+
 ```{r total score}
 dat_total_rater <- dat_long |>
   group_by(Patient_id, Rater, Sex, Age) |>
@@ -285,6 +323,9 @@ dat_total_rater <- dat_long |>
     .groups = "drop"
   )
 ```
+
+
+### 3. 患者DPAS总分的ICC重现性
 
 
 ```{r total icc}
@@ -299,13 +340,20 @@ icc_result <- icc_result|>
 icc_result$p <- "<0.001"
 
 icc_result |>
-  kbl(align = "c",
-      format = "pandoc",
-      caption = "四个评估人对患者DPAS总分的ICC可靠性") %>%
-  kable_styling(position = "center")
+  flextable() |>
+  align(align = "center", part = "all") |>
+  hline(
+    i = nrow(icc_result),
+    border = fp_border(width = 2),
+    part = "body"
+  ) |>
+  set_caption("四个评估人对患者DPAS总分的ICC可靠性") |>
+  autofit()
 ```
 
-### Metric specific ICC
+
+### 4.患者分项皮损的ICC重现性
+
 
 ```{r metric specific score}
 dat_metric_specific_rater <- dat_long |>
@@ -322,13 +370,28 @@ icc_metric <- calculate_metric_icc(dat_metric_specific_rater)
 
 icc_metric$P <- "P < 0.001"
 
-icc_metric |>
-  kbl(align = "c",
-      format = "pandoc",
-      caption = "四个评估人对患者分项皮损的ICC可靠性") %>%
-  kable_styling(position = "center")
+# Remove `皮肤萎缩`
+icc_metric <- icc_metric |>
+  filter(!Metric %in% "皮肤萎缩")
+
+icc_metric |> 
+  flextable() |>
+  align(align = "center", part = "all") |>
+  border_remove() |>
+  hline(
+    i = 1,
+    border = officer::fp_border(width = 1),
+    part = "header"
+  ) |>
+  hline_bottom(
+    border = officer::fp_border(width = 2),
+    part = "all"
+  ) |>
+  set_caption("四个评估人对患者分项皮损的ICC可靠性") |>
+  autofit()
 ```
 
+### 5. 混合效应逻辑回归
 
 ```{r dat_model}
 dat_model <- dat_long |>
@@ -359,7 +422,6 @@ fit <- glmer(
 # summary(fit)
 ```
 
-### emmeans summary of fit
 
 ```{r}
 # emm_sex <- emmeans(
@@ -371,7 +433,8 @@ fit <- glmer(
 # pairs(emm_sex, reverse = TRUE)
 ```
 
-```{r fig.width=6, fig.asp=.618, out.width="100%"}
+
+```{r fig.width=6, fig.asp=.618, out.width="100%" plot prob}
 # Estimated probabilities
 emm_prob <- emmeans(
   fit,
@@ -478,18 +541,15 @@ ggplot(
   )
 ```
 
+    逻辑回归结果表明，不同光老化皮损在男女人群的发生率不同，女性显著具有毛细血管扩张和色素色斑风险。男性光老化风险则是脂溢性角化和深浅皱纹。
+
 ## 结论
 
-组间相关系数（ICC）分析显示：不同年资的皮肤科人员，可以高度重现的完成DPAS量表，体现在：1. 不同评估人可以高度重现患者的DPAS总分；2. 在11项具体皮损当中，不同评估人对11项皮损的评估高度重现。
+1. 在高原高海拔地区，毛细血管扩张、脂溢性角化和色素减退和分布不均是主要的光老化皮损。
 
-线性混合效应Logistic回归分析显示一下结果：
+2. 光老化皮损具有性别差异。
 
-1. 年龄（Age）： 年龄每增加 1 岁，出现 DPAS 阳性表现的优势比（odds）增加约 2.1%（OR ≈ 1.02，p = 0.005）。
-
-2. 性别（Male）： 在参考 Metric 和参考面部位置下，男性出现阳性表现的 odds 约比女性低 79%（OR = exp(-1.571) ≈ 0.21，p < 0.001）。
-面部位置（Position）： 与参考面部位置相比，额部（Forehead）、左面颊（Left cheek）和右面颊（Right cheek）出现阳性表现的 odds 分别约为 2.40 倍、3.19 倍和 3.06 倍，均 p < 0.001。
-
-3. Metric × 男性（Metric × Male）交互作用： 显著的正向交互项表明，男性与女性之间的差异因 Metric 而异。与参考 Metric 1 相比，Metric 2、4、6、7、8、9、10 和 11 中男性相关的 odds 进一步升高；而 Metric 5 的交互作用无统计学意义（p = 0.270）。因此，男性效应并不是在所有 Metric 中恒定的，性别差异具有 Metric 特异性。
+3. DPAS量表在临床门诊场景，具有很好稳定性和重现性。
 
 
 ## 参考文献
