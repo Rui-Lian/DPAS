@@ -16,12 +16,12 @@ bibliography: references.bib
 knitr::opts_chunk$set(
   echo = FALSE, # hide R source code from the final document, but run it
   eval = TRUE, # Actually execute the code
-	message = FALSE,
-	warning = FALSE,
-	cache = TRUE,
-	include = TRUE,
+  message = FALSE,
+  warning = FALSE,
+  cache = TRUE,
+  include = TRUE,
   results = "markup",
-  fig.show = "asis" # All figures placed where they are produced, 
+  fig.show = "asis" # All figures placed where they are produced,
   ## hold: all figures are held and placed at the end of the chunk
   ## Animate: combine multiple plots into an animation!
 )
@@ -41,7 +41,7 @@ library(colorspace)
 library(showtext)
 showtext_auto()
 library(GWalkR) # Tabuleu like, TODO: further explore
-library(DataExplorer) 
+library(DataExplorer)
 library(gtsummary) # Table 1
 library(kableExtra)
 library(lmerTest)
@@ -96,24 +96,24 @@ clean_dpas <- raw_dpas |>
     Rater = 监察人
   ) |>
   rename_with(
-    # `rename_with` accepts function: 
+    # `rename_with` accepts function:
     # dplyr/purrr accept one-sided function, function has only the RHS
-    # `~...` R shorthand for an anonymous function 
+    # `~...` R shorthand for an anonymous function
     # `~` means: Define a function, and use `.x` as its input
-    
+
     # `.x` represents the current input value passed to the function
-    # Equivalent to: 
+    # Equivalent to:
     # function(.x) {
     #   paste0("Forehead", sub("^额", "", .x))
     # }
-    
-    # Inside the paste0: 
+
+    # Inside the paste0:
     # for the current input column name .x
     # find 额 at the beginning of the string (^额)
     # and replace it with nothing ("")
     # leaving the rest of the column name unchanged.
     ~ paste0("Forehead", sub("^额", "", .x)),
-    
+
     # select column start with `额`
     # followed by one or more digits
     matches("^额\\d+$")
@@ -134,10 +134,17 @@ clean_dpas <- raw_dpas |>
 # Long format
 clean_dpas_long <- clean_dpas |>
   pivot_longer(
+    # columns to be converted to long format
     cols = 3:ncol(clean_dpas),
     names_to = "Position_metric",
     values_to = "Score"
   ) |>
+  # Regex
+  # (?<= : Positive lookbehind: look immediately behind the current position
+  # \\D  : the immediate character behind the current position is a non-digit
+  # (?=  : Positive lookahead: look immediately ahead of the current position
+  # \\d  : the immediate character ahead of the current position is a digit
+  # the regex engine tests positions (boundaries) in the string
   separate(
     Position_metric,
     into = c("Position", "Metric"),
@@ -171,7 +178,7 @@ dat_long <- clean_pt |>
     by = "Patient_id"
   )
 
-# data class of each column 
+# data class of each column
 dat_long <- dat_long %>%
   mutate(
     Patient_id = as.character(Patient_id),
@@ -198,7 +205,7 @@ dat_long <- dat_long |>
 # 11 lesions metrics
 dat_long <- dat_long |>
   mutate(Metric = case_when(
-    Metric == "1" ~ "皮肤暗黄", 
+    Metric == "1" ~ "皮肤暗黄",
     Metric == "2" ~ "黄色丘疹",
     Metric == "3" ~ "皮肤萎缩",
     Metric == "4" ~ "痣",
@@ -239,20 +246,29 @@ dat_long <- dat_long |>
 
 
 ```{r Table 1}
+# Calculate the table 1
 table1_df <- dat_long |>
-  dplyr::select(Patient_id, Sex, Age) |>
-  dplyr::distinct(Patient_id, .keep_all = TRUE) |>
-  gtsummary::tbl_summary(
+  select(Patient_id, Sex, Age) |>
+  
+  # keep_all: keep all the other cols from 1st row 
+  # corresponding to each unique patient
+  distinct(Patient_id, .keep_all = TRUE) |> 
+  tbl_summary(
     by = Sex,
     include = Age,
     statistic = list(
       all_continuous() ~ "{mean} ({sd})"
     ),
+    
+    # Show a missing-value row only 
+    # if there are actually missing values in the variables being summarized.
     missing = "ifany"
   ) |>
-  gtsummary::add_p() |>
-  tibble::as_tibble()
+  add_p() |>
+  as_tibble()
 
+# flextable to generate table 1
+# To be rendered in MS word
 table1_df |>
   flextable() |>
   align(align = "center", part = "all") |>
@@ -272,20 +288,22 @@ table1_df |>
 ```{r metric by sex,fig.width=7, fig.asp=.618, out.width="100%"}
 score_sex_position_metric <- dat_long |>
   group_by(Sex, Position, Metric) |>
-  summarise(n = sum(Score)/4) |>
-  mutate(pct = n /48)
+  summarise(n = sum(Score) / 4) |>
+  mutate(pct = n / 48)
 
 
-g <- ggplot(score_sex_position_metric,
-            aes(x = fct_rev(Metric), y = pct, fill = Sex)) +
+g <- ggplot(
+  score_sex_position_metric,
+  aes(x = fct_rev(Metric), y = pct, fill = Sex)
+) +
   geom_col(position = position_dodge(width = 0.9)) +
   geom_text(
     aes(label = percent(pct, accuracy = 1)),
     position = position_dodge(width = 0.9),
-    hjust = -0.1,          # push labels just past the bar tip
+    hjust = -0.1, # push labels just past the bar tip
     size = 3
   ) +
-  scale_fill_discrete_qualitative(palette = "Harmonic") + 
+  scale_fill_discrete_qualitative(palette = "Harmonic") +
   scale_y_continuous(
     labels = percent_format(accuracy = 1),
     breaks = seq(0, 1, 0.2),
@@ -297,9 +315,11 @@ g <- ggplot(score_sex_position_metric,
     x = "光老化类型",
     y = "发生率",
     color = "性别"
-  ) + 
+  ) +
   coord_flip() +
   facet_grid(. ~ Position) +
+  
+  # Font size will not change with the plot size
   theme_classic(base_size = 12) +
   theme(
     legend.position = "top",
@@ -320,6 +340,9 @@ dat_total_rater <- dat_long |>
   group_by(Patient_id, Rater, Sex, Age) |>
   summarise(
     Total = sum(Score, na.rm = TRUE),
+    
+    # .groups gives summarise() explicit control 
+    # over the grouping structure that will be passed to subsequent dplyr operations.
     .groups = "drop"
   )
 ```
@@ -333,8 +356,8 @@ icc_total <- calculate_total_icc(dat_total_rater)
 
 icc_result <- as.data.frame(icc_total$results)
 
-icc_result <- icc_result|>
-  filter(type == "ICC2")%>% 
+icc_result <- icc_result |>
+  filter(type == "ICC2") %>%
   select(ICC, p, `lower bound`, `upper bound`)
 
 icc_result$p <- "<0.001"
@@ -374,7 +397,7 @@ icc_metric$P <- "P < 0.001"
 icc_metric <- icc_metric |>
   filter(!Metric %in% "皮肤萎缩")
 
-icc_metric |> 
+icc_metric |>
   flextable() |>
   align(align = "center", part = "all") |>
   border_remove() |>
@@ -411,7 +434,7 @@ dat_model <- dat_model |>
 
 ```{r glmer fit}
 fit <- glmer(
-  Score ~ Position + Age + Metric * Sex  + 
+  Score ~ Position + Age + Metric * Sex +
     (1 | Rater) + (1 | Patient_id),
   data = dat_model,
   family = binomial
@@ -425,11 +448,11 @@ fit <- glmer(
 
 ```{r}
 # emm_sex <- emmeans(
-#   fit, 
-#   ~ Sex | Metric, 
+#   fit,
+#   ~ Sex | Metric,
 #   type = "response"
 # )
-# 
+#
 # pairs(emm_sex, reverse = TRUE)
 ```
 
