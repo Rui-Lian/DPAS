@@ -9,8 +9,8 @@ output:
 editor_options:
   chunk_output_type: inline
 bibliography: references.bib
+csl: ama.csl
 ---
-
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(
@@ -28,7 +28,6 @@ knitr::opts_chunk$set(
 
 options(digits = 3)
 ```
-
 
 ```{r packages}
 library(tidyverse)
@@ -52,13 +51,11 @@ library(flextable)
 library(officer)
 ```
 
-
 ```{r ggplot theme set}
 theme_set(
   theme_minimal(base_size = 14)
 )
 ```
-
 
 ```{r Utility function}
 # Path of utils
@@ -70,7 +67,6 @@ source(file.path(utils.path, "calculate_total_icc.R"))
 # Calculate the ICC on each metric (lesion)
 source(file.path(utils.path, "calculate_metric_icc.R"))
 ```
-
 
 ```{r data import}
 # Path of raw data
@@ -86,7 +82,6 @@ raw_pt <- read_excel(
   file.path(path, "DPAS48_pt_info.xls")
 )
 ```
-
 
 ```{r clean DPAS}
 # Rename DPAS columns
@@ -168,7 +163,6 @@ clean_pt <- raw_pt |>
   )
 ```
 
-
 ```{r Merge DPAS and pt_info}
 # Create canonical dataset, dat_long
 # and join patient info
@@ -190,7 +184,6 @@ dat_long <- dat_long %>%
     Score      = as.numeric(Score) # already numeric → no-op, kept for clarity
   )
 ```
-
 
 ```{r revalue}
 # Revalue metrics
@@ -230,23 +223,21 @@ dat_long <- dat_long |>
 
 ## 目的
 
-    患者光老化皮损表现需要可靠的量化评估[@zhaoNoninvasiveAssessmentMethods2025]。本研究通过通过组内相关系数分析[@IntraclassCorrelationsUses]评估皮肤镜光老化量表（Dermoscopic Photoaging Scale, DPAS）[@isikDevelopmentSkinAging2013a]由不同皮肤科职级人员实施的可靠性。同时描述在西北高原、高海拔区域的光老化皮损特征和性别差异。
+光老化皮损需要可靠的量化评估[@zhaoNoninvasiveAssessmentMethods2025]。本研究通过组内相关系数分析[@IntraclassCorrelationCoefficient]，评估皮肤镜光老化量表（Dermoscopic Photoaging Scale, DPAS）[@isikDevelopmentSkinAging2013a]由皮肤科不同职级人员实施的可靠性。同时探索西北高原地区光老化皮损特征。
 
 ## 方法
 
-    随机选取皮肤科48名门诊患者，采集前额，左右颧骨区域和下巴正中的皮肤镜照片，按照DPAS量表要求，评估患者四个部位（前额、左右颧骨、下巴）的光老化相关皮损。科室四个职级人员（副主任医师、主治医师、住院医师、护士）分别按照DPAS量表要求读片。数据处理包括：
-    
-    随机选取皮肤科门诊患者48名，采集其前额、左右颧骨区域及下巴正中的皮肤镜照片，按照DPAS量表要求，由科室四个职级人员（副主任医师、主治医师、住院医师、护士）读片，评估患者上述四个部位的11项光老化相关皮损。数据处理包括：
+随机48名门诊患者，采集前额，左右颧骨和下巴正中的皮肤镜照片，按照DPAS量表要求，有科室四个职级人员（副主任医师、主治医师、住院医师、护士）分别读片，评估患者光老化皮损。
 
-1.  统计不同光老化皮损在男女人群的分布特征
+1.  不同光老化皮损的分布特征。
 
-2.  采用组内相关系数评估不同职级人员使用DPAS量表的可靠性和重现性。
+2.  评估不同职级人员使用DPAS量表的可靠性和重现性。
 
-3.  采用线性混合效应逻辑回归探索性别、部位和不同光老化皮损的关系。
+3.  逻辑回归探索性别、部位和光老化皮损类型的关系。
 
 ## 结果
 
-### 1. 患者性别年龄
+### 1. 患者基线：
 
 ```{r Table 1}
 # Calculate the table 1
@@ -284,9 +275,7 @@ table1_df |>
   autofit()
 ```
 
-
-### 2. 不同光老化皮损在不同性别、部位的发生率
-
+### 2. 不同光老化皮损的发生特征
 
 ```{r metric by sex,fig.width=7, fig.asp=.618, out.width="100%"}
 score_sex_position_metric <- dat_long |>
@@ -334,8 +323,7 @@ g <- ggplot(
 g
 ```
 
-    如上图，毛细血管扩张、色斑，脂溢性角化和深浅皱纹是本研究人群的光老化特征，男女存在不同的皮损类型。
-
+如上图，毛细血管扩张、色斑，脂溢性角化和深浅皱纹是常见光老化特征，男女存在不同的皮损类型。
 
 ```{r total score}
 dat_total_rater <- dat_long |>
@@ -349,8 +337,7 @@ dat_total_rater <- dat_long |>
   )
 ```
 
-
-### 3. 患者DPAS总分的ICC重现性
+### 3. DPAS总分的评估重现性
 
 ```{r total icc}
 icc_total <- calculate_total_icc(dat_total_rater)
@@ -362,6 +349,7 @@ icc_result <- icc_result |>
   select(ICC, p, `lower bound`, `upper bound`)
 
 icc_result$p <- "<0.001"
+
 
 icc_result |>
   flextable() |>
@@ -375,10 +363,9 @@ icc_result |>
   autofit()
 ```
 
-ICC(2,1) = 0.945，表明DPAS光老化皮损总评分在不同评估人之间具有很高的绝对一致性，即相较于评估者带来的测量差异，患者之间的真实评分差异占据了评分变异的绝大部分；约94.5%的相对评分变异能够反映患者间的差异，而约5.5%与测量误差及评估人差异有关。
+ICC(2,1) = 0.945，表明不同评估人在DPAS总分上高度一致，约94.5%的相对评分变异反映患者间的差异，而与测量误差和评估人差异有关的变异仅为5.5%。
 
-### 4.患者分项皮损的ICC重现性
-
+### 4.患者分项皮损的评估重现性
 
 ```{r metric specific score}
 dat_metric_specific_rater <- dat_long |>
@@ -399,6 +386,10 @@ icc_metric$P <- "P < 0.001"
 icc_metric <- icc_metric |>
   filter(!Metric %in% "皮肤萎缩")
 
+# Remove the F, df1, df2 value in icc_metric
+icc_metric <- icc_metric |>
+  select(-`F`, -df1, -df2)
+
 icc_metric |>
   flextable() |>
   align(align = "center", part = "all") |>
@@ -416,11 +407,11 @@ icc_metric |>
   autofit()
 ```
 
-同上，针对不同的光老化皮损类型，不同评估人之间的评估高度一致。
+同上，针对不同的光老化皮损类型，不同评估人之间的评估高度重现。
 
 ### 5. 混合效应逻辑回归
 
-```{r dat_model}
+```{r dat_model, cache=TRUE}
 dat_model <- dat_long |>
   mutate(
     Age_c = Age - mean(Age, na.rm = TRUE),
@@ -435,8 +426,7 @@ dat_model <- dat_model |>
   filter(!Metric == 3)
 ```
 
-
-```{r glmer fit}
+```{r glmer fit, cache=TRUE}
 fit <- glmer(
   Score ~ Position + Age + Metric * Sex +
     (1 | Rater) + (1 | Patient_id),
@@ -449,7 +439,6 @@ fit <- glmer(
 # summary(fit)
 ```
 
-
 ```{r}
 # emm_sex <- emmeans(
 #   fit,
@@ -460,8 +449,7 @@ fit <- glmer(
 # pairs(emm_sex, reverse = TRUE)
 ```
 
-
-```{r fig.width=6, fig.asp=.618, out.width="100%" plot prob}
+```{r plot prob, fig.width=6, fig.asp=.618, out.width="100%", cache=TRUE}
 # Estimated probabilities
 emm_prob <- emmeans(
   fit,
@@ -568,15 +556,12 @@ ggplot(
   )
 ```
 
-    逻辑回归分析显示，不同类型光老化皮损在男性和女性人群中的发生概率存在显著差异。女性发生毛细血管扩张及色素相关皮损的概率显著较高；男性则表现为脂溢性角化、深层皱纹及浅表皱纹的发生概率较高。
+逻辑回归分析显示，光老化皮损存在性别差异。女性人群毛细血管扩张及色素相关皮损风险较高；男性脂溢性角化、深层皱纹及浅表皱纹风险较高。
 
 ## 结论
 
-1. 在高原高海拔地区，毛细血管扩张、脂溢性角化以及色素减退和色素分布不均是较为常见的主要光老化皮损。
+1.  在高原地区，毛细血管扩张、脂溢性角化以及色素减退和色素分布不均是较为常见的主要光老化皮损。不同类型的光老化皮损存在明显的性别差异。
 
-2. 不同类型的光老化皮损存在明显的性别差异。女性更易出现毛细血管扩张及色素相关皮损，而男性更易出现脂溢性角化及深、浅层皱纹。
-
-3. DPAS量表在临床门诊场景中具有较高的研究者间可靠性和良好的重现性，能够稳定、可靠地用于光老化皮损的临床评估。
-
+2.  DPAS量表重现性优秀，经过培训，不同皮肤科职级人员均能胜任。
 
 ## 参考文献
