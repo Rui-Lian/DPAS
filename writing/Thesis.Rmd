@@ -1,7 +1,7 @@
 ---
 title: "皮肤镜下光老化量表的重现性研究"
-author: "xxx，xxx，xxx"
-date: "2026-09-24"
+author: 
+  "连慧妍 李艳娇 李彤 王岩 陶思睿"
 output:
   word_document: default
   pdf_document: default
@@ -11,6 +11,7 @@ editor_options:
 bibliography: references.bib
 csl: ama.csl
 ---
+
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(
@@ -275,7 +276,16 @@ table1_df |>
   autofit()
 ```
 
+\newpage
+
 ### 2. 不同光老化皮损的发生特征
+
+DPAS量表的常见皮损见下图：
+
+```{r include lesion image}
+knitr::include_graphics("~/DPAS Reproducibility/images/DPAS10Lesions.png")
+```
+
 
 ```{r metric by sex,fig.width=7, fig.asp=.618, out.width="100%"}
 score_sex_position_metric <- dat_long |>
@@ -336,6 +346,8 @@ dat_total_rater <- dat_long |>
     .groups = "drop"
   )
 ```
+
+\newpage
 
 ### 3. DPAS总分的评估重现性
 
