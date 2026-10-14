@@ -50,6 +50,7 @@ library(forcats)
 library(scales)
 library(flextable)
 library(officer)
+library(comorbidity)
 ```
 
 ```{r ggplot theme set}
@@ -67,6 +68,9 @@ source(file.path(utils.path, "calculate_total_icc.R"))
 
 # Calculate the ICC on each metric (lesion)
 source(file.path(utils.path, "calculate_metric_icc.R"))
+
+# Function to extract HIS co-morbidity info
+source(file.path(utils.path, "extract_his.R"))
 ```
 
 ```{r data import}
@@ -164,6 +168,7 @@ clean_pt <- raw_pt |>
   )
 ```
 
+
 ```{r Merge DPAS and pt_info}
 # Create canonical dataset, dat_long
 # and join patient info
@@ -221,6 +226,95 @@ dat_long <- dat_long |>
     Position == "Right_cheek" ~ "右颧骨"
   ))
 ```
+
+
+```{r Read the ICD10_CHN}
+icd10_chn<- read_excel("~/DPAS Reproducibility/data/ICD10_CHN.xlsx")
+```
+
+```{r read patient id, his table}
+pt_id <- read_excel(paste0(path, "/皮肤科48例信息1.xls"))
+
+# Column data type
+pt_id <- pt_id |>
+  mutate(
+    `序号` = as.character(序号),
+    `姓名` = as.character(姓名),
+    `性别` = as.character(性别),
+    `年龄` = as.character(年龄),
+    `身份证` = as.character(身份证),
+    `门诊号` = as.character(门诊号)
+  )
+
+# Change column names
+pt_id <- pt_id |>
+  rename(
+    Patient_id = 序号,
+    Name = 姓名,
+    Sex = 性别,
+    id_number = 身份证,
+    Age = 年龄,
+    OPD_id = 门诊号
+  )
+
+# Select columns in pt_id
+# Patient_id as key to connect dat long
+# id_number used to join the OPD, IPD HIS co-morbidity
+pt_id <- pt_id |>
+  select(Patient_id, id_number)
+```
+
+
+```{r extract his}
+# extract IPD his comorbidity 
+ipd_his <- extract_his(file_name = "IPD_HIS.xlsx", source = "ipd")
+
+# extract opd his comorbidity
+opd_his <- extract_his(file_name = "OPD_HIS.xlsx", source = "opd")
+
+# combine ipd and opd
+his <- rbind(ipd_his, opd_his)
+
+# Join his with pt_id to have the Patient_id used in dat_long
+his <- his |>
+  left_join(pt_id, by = "id_number")
+```
+
+```{r charlson and exlixhauser comorbidity index}
+# charlson
+charlson <- comorbidity(x = his, id = "Patient_id", code = "raw_icd", map = "charlson_icd10_quan", assign0 = TRUE) 
+charlson
+
+cci_score <- score(charlson, weights = "charlson", assign0 = TRUE)
+
+cci_score <- data.frame(
+  Patient_id = charlson$Patient_id, 
+  cci_score = cci_score
+)
+
+# elixhauser 
+elixhauser <- comorbidity(
+  x = his,
+  id = "Patient_id",
+  code = "raw_icd",
+  map = "elixhauser_icd10_quan",
+  assign0 = TRUE
+)
+
+# Calculate the van Walraven weighted score
+elixhauser_score <- score(
+  elixhauser,
+  weights = "vw",
+  assign0 = TRUE
+)
+
+# Inspect the results
+elixhauser_score <- data.frame(
+  Patient_id = elixhauser$Patient_id, 
+  elixhauser_score = exlixhauser_socore
+)
+```
+
 
 ## 目的
 
@@ -440,20 +534,169 @@ dat_model <- dat_long |>
 # Inclusion of metric 3 lead to singular fitting
 dat_model <- dat_model |>
   filter(!Metric == "皮肤萎缩")
+
+# Join elixhauser index to dat_model
+dat_model <- dat_model |>
+  left_join(elixhauser_score, by = "Patient_id")
+
+# Join cci to dat_model
+dat_model <- dat_model |>
+  left_join(cci_score, by = "Patient_id")
 ```
 
+#### fit 1: no comorbidity
+
 ```{r glmer fit, cache=TRUE}
-fit <- glmer(
-  Score ~ Position + Age + Metric * Sex +
+# fit1: no comorbidity index
+fit1 <- glmer(
+  Score ~ Position + Age_c + Metric * Sex + 
     (1 | Rater) + (1 | Patient_id),
   data = dat_model,
   family = binomial
 )
 
 # 3. Check convergence
-# isSingular(fit)
-# summary(fit)
+isSingular(fit1)
+summary(fit1)
 ```
+#### fit 2: Elixhauser
+
+
+```{r}
+# fit2: Elixhauser score
+fit2 <- glmer(
+  Score ~ Position + Age_c + Metric * Sex + Metric * elixhauser_score + 
+    (1 | Rater) + (1 | Patient_id),
+  data = dat_model,
+  family = binomial
+)
+
+# 3. Check convergence
+isSingular(fit2)
+summary(fit2)
+```
+
+```{r}
+# Estimate the elixhauser slope for each lesion type
+cci_effect <- emtrends(
+  fit2,
+  ~ Metric,
+  var = "elixhauser_score"
+)
+
+# Test whether the CCI slope differs from zero
+summary(
+  cci_effect,
+  infer = c(TRUE, TRUE)
+)
+```
+
+
+
+#### fit 3: CCI
+
+```{r}
+# fit3: cci
+fit3 <- glmer(
+  Score ~ Position + Age_c + Metric * Sex + Metric * cci_score + 
+    (1 | Rater) + (1 | Patient_id),
+  data = dat_model,
+  family = binomial 
+)
+
+# 3. Check convergence
+isSingular(fit3)
+summary(fit3)
+```
+
+```{r}
+# Estimate the CCI slope for each lesion type
+cci_effect <- emtrends(
+  fit3,
+  ~ Metric,
+  var = "cci_score"
+)
+
+# Test whether the CCI slope differs from zero
+summary(
+  cci_effect,
+  infer = c(TRUE, TRUE)
+)
+```
+
+
+#### fit 4: diabetes
+
+```{r}
+tmp <- his |> filter(icd_category %in% "E11" | icd_category %in% "E14" | icd_category %in% "E16")
+
+unique(tmp$Patient_id)
+
+diabetes_ids <- c(
+  "2026070201", "2026080601", "2026082502",
+  "2026052802", "2026082701"
+)
+
+dat_model$diabetes <- ifelse(dat_model$Patient_id %in% diabetes_ids, 1, 0)
+
+# fit4: diabetes
+fit4 <- glmer(
+  Score ~ Position + Age_c + Metric * Sex + Metric * factor(diabetes) + 
+    (1 | Rater) + (1 | Patient_id),
+  data = dat_model,
+  family = binomial 
+)
+
+# 3. Check convergence
+isSingular(fit4)
+summary(fit4)
+```
+
+```{r}
+# Set diabetes = 0 as the reference group
+dat_model$diabetes <- factor(dat_model$diabetes, levels = c(0, 1))
+
+# Center age for model stability and interpretation
+dat_model$Age_c <- dat_model$Age - mean(dat_model$Age, na.rm = TRUE)
+
+# Logistic mixed-effects model
+fit_diabetes <- glmer(
+  Score ~ Metric * diabetes +
+    Position + Sex + Age_c +
+    (1 | Patient_id) + (1 | Rater),
+  data = dat_model,
+  family = binomial(link = "logit"),
+  control = glmerControl(optimizer = "bobyqa")
+)
+
+isSingular(fit_diabetes)
+summary(fit_diabetes)
+```
+
+```{r}
+library(emmeans)
+
+# Estimate diabetes effects separately for each lesion
+emm_diabetes <- emmeans(
+  fit_diabetes,
+  ~ diabetes | Metric
+)
+
+# Compare diabetes = 1 with diabetes = 0 within each lesion
+diabetes_or <- pairs(
+  emm_diabetes,
+  reverse = TRUE
+)
+
+# Report odds ratios, 95% CIs, and P values
+summary(
+  diabetes_or,
+  type = "response",
+  infer = c(TRUE, TRUE),
+  adjust = "holm"
+)
+```
+
 
 ```{r}
 # emm_sex <- emmeans(
@@ -573,6 +816,57 @@ ggplot(
 ```
 
 逻辑回归分析显示，光老化皮损存在性别差异。女性人群毛细血管扩张及色素相关皮损风险较高；男性脂溢性角化、深层皱纹及浅表皱纹风险较高。
+
+### 6. 总分
+
+```{r}
+total_score_dat_model <- dat_model |>
+  group_by(Patient_id, Sex, Age, Position, Metric, elixhauser_score, cci_score, diabetes) |>
+  summarise(avg_score = mean(Score)) |>
+  ungroup()
+
+total_score_dat_model <- total_score_dat_model |>
+  group_by(Patient_id, Sex, Age, elixhauser_score, cci_score, diabetes) |>
+  summarise(total_score = sum(avg_score)) |>
+  ungroup()
+```
+
+#### fit total 1, no commorbidity, no diabetes
+
+```{r}
+fit_total1 <- lm(total_score ~ Sex + Age + elixhauser_score, 
+                 data = total_score_dat_model)
+
+summary(fit_total1)
+```
+
+#### Fit total 2: Elixhauser
+
+```{r}
+fit_total2 <- lm(total_score ~ Sex + Age + elixhauser_score, 
+                 data = total_score_dat_model)
+
+summary(fit_total2)
+```
+
+#### fit total 3: cci
+
+```{r}
+fit_total3 <- lm(total_score ~ Sex + Age + cci_score, 
+                 data = total_score_dat_model)
+
+summary(fit_total3)
+```
+
+#### fit total 4: diabetes
+
+```{r}
+fit_total4 <- lm(total_score ~ Sex + Age + factor(diabetes), 
+                 data = total_score_dat_model)
+
+summary(fit_total4)
+```
+
 
 ## 结论
 
