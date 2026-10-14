@@ -203,11 +203,11 @@ dat_long <- dat_long |>
     Metric == "2" ~ "黄色丘疹",
     Metric == "3" ~ "皮肤萎缩",
     Metric == "4" ~ "痣",
-    Metric == "5" ~ "色素减退-色素沉着斑",
+    Metric == "5" ~ "色素沉着斑",
     Metric == "6" ~ "毛细血管扩张",
     Metric == "7" ~ "脂溢性角化",
     Metric == "8" ~ "老年性粉刺",
-    Metric == "9" ~ "深皱纹",
+    Metric == "9" ~ "深层皱纹",
     Metric == "10" ~ "浅表皱纹",
     Metric == "11" ~ "网状皱纹"
   ))
@@ -293,6 +293,10 @@ score_sex_position_metric <- dat_long |>
   summarise(n = sum(Score) / 4) |>
   mutate(pct = n / 48)
 
+# Remove `皮肤萎缩`
+score_sex_position_metric <- score_sex_position_metric |>
+  filter(!Metric == "皮肤萎缩")
+
 
 g <- ggplot(
   score_sex_position_metric,
@@ -333,7 +337,7 @@ g <- ggplot(
 g
 ```
 
-如上图，毛细血管扩张、色斑，脂溢性角化和深浅皱纹是常见光老化特征，男女存在不同的皮损类型。
+如上图，毛细血管扩张、色斑，脂溢性角化和深层皱纹和浅表皱纹是常见光老化特征，男女存在不同的皮损类型。
 
 ```{r total score}
 dat_total_rater <- dat_long |>
@@ -435,7 +439,7 @@ dat_model <- dat_long |>
 # Remove metric 3, which does not occur among all patients
 # Inclusion of metric 3 lead to singular fitting
 dat_model <- dat_model |>
-  filter(!Metric == 3)
+  filter(!Metric == "皮肤萎缩")
 ```
 
 ```{r glmer fit, cache=TRUE}
@@ -572,7 +576,7 @@ ggplot(
 
 ## 结论
 
-1.  在高原地区，毛细血管扩张、脂溢性角化以及色素减退和色素分布不均是较为常见的主要光老化皮损。不同类型的光老化皮损存在明显的性别差异。
+1.  在高原地区，毛细血管扩张、脂溢性角化以及色素沉着斑是较为常见的主要光老化皮损。不同类型的光老化皮损存在明显的性别差异。
 
 2.  DPAS量表重现性优秀，经过培训，不同皮肤科职级人员均能胜任。
 
