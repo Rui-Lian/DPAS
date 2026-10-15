@@ -12,6 +12,7 @@ bibliography: references.bib
 csl: ama.csl
 ---
 
+nter-Rater Reliability of the Dermoscopic Photoaging Scale and Lesion-Specific Associations With Patient Characteristics
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(
@@ -823,7 +824,7 @@ summary(
 
 ```{r}
 fit7 <- glmer(
-  Score ~ Metric * (Position + cci_score + diabetes + Age) +
+  Score ~ Metric * (Position + cci_score + factor(diabetes) + Age) +
     (1 | Patient_id),
   data = dat_model,
   family = binomial
@@ -888,7 +889,7 @@ summary(
 
 
 ```{r}
-anova(fit1, fit2, fit3, fit4, fit5, fit6,  test = "Chisq")
+anova(fit1, fit2, fit3, fit4, fit5, fit6, fit7, test = "Chisq")
 ```
 
 
