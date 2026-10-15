@@ -53,11 +53,13 @@ library(officer)
 library(comorbidity)
 ```
 
+
 ```{r ggplot theme set}
 theme_set(
   theme_minimal(base_size = 14)
 )
 ```
+
 
 ```{r Utility function}
 # Path of utils
@@ -73,6 +75,7 @@ source(file.path(utils.path, "calculate_metric_icc.R"))
 source(file.path(utils.path, "extract_his.R"))
 ```
 
+
 ```{r data import}
 # Path of raw data
 path <- "~/DPAS Reproducibility/data"
@@ -87,6 +90,7 @@ raw_pt <- read_excel(
   file.path(path, "DPAS48_pt_info.xls")
 )
 ```
+
 
 ```{r clean DPAS}
 # Rename DPAS columns
@@ -191,6 +195,7 @@ dat_long <- dat_long %>%
   )
 ```
 
+
 ```{r revalue}
 # Revalue metrics
 
@@ -231,6 +236,7 @@ dat_long <- dat_long |>
 ```{r Read the ICD10_CHN}
 icd10_chn<- read_excel("~/DPAS Reproducibility/data/ICD10_CHN.xlsx")
 ```
+
 
 ```{r read patient id, his table}
 pt_id <- read_excel(paste0(path, "/皮肤科48例信息1.xls"))
@@ -280,6 +286,7 @@ his <- his |>
   left_join(pt_id, by = "id_number")
 ```
 
+
 ```{r charlson and exlixhauser comorbidity index}
 # charlson
 charlson <- comorbidity(x = his, id = "Patient_id", code = "raw_icd", map = "charlson_icd10_quan", assign0 = TRUE) 
@@ -311,10 +318,9 @@ elixhauser_score <- score(
 # Inspect the results
 elixhauser_score <- data.frame(
   Patient_id = elixhauser$Patient_id, 
-  elixhauser_score = exlixhauser_socore
+  elixhauser_score = elixhauser_score
 )
 ```
-
 
 ## 目的
 
@@ -333,6 +339,7 @@ elixhauser_score <- data.frame(
 ## 结果
 
 ### 1. 患者基线：
+
 
 ```{r Table 1}
 # Calculate the table 1
@@ -370,11 +377,13 @@ table1_df |>
   autofit()
 ```
 
+
 \newpage
 
 ### 2. 不同光老化皮损的发生特征
 
 DPAS量表的常见皮损见下图：
+
 
 ```{r include lesion image}
 knitr::include_graphics("~/DPAS Reproducibility/images/DPAS10Lesions.png")
@@ -433,6 +442,7 @@ g
 
 如上图，毛细血管扩张、色斑，脂溢性角化和深层皱纹和浅表皱纹是常见光老化特征，男女存在不同的皮损类型。
 
+
 ```{r total score}
 dat_total_rater <- dat_long |>
   group_by(Patient_id, Rater, Sex, Age) |>
@@ -445,9 +455,11 @@ dat_total_rater <- dat_long |>
   )
 ```
 
+
 \newpage
 
 ### 3. DPAS总分的评估重现性
+
 
 ```{r total icc}
 icc_total <- calculate_total_icc(dat_total_rater)
@@ -473,9 +485,11 @@ icc_result |>
   autofit()
 ```
 
+
 ICC(2,1) = 0.945，表明不同评估人在DPAS总分上高度一致，约94.5%的相对评分变异反映患者间的差异，而与测量误差和评估人差异有关的变异仅为5.5%。
 
 ### 4.患者分项皮损的评估重现性
+
 
 ```{r metric specific score}
 dat_metric_specific_rater <- dat_long |>
@@ -517,11 +531,13 @@ icc_metric |>
   autofit()
 ```
 
+
 同上，针对不同的光老化皮损类型，不同评估人之间的评估高度重现。
 
 ### 5. 混合效应逻辑回归
 
-```{r dat_model, cache=TRUE}
+
+```{r prepare data for modeling in dat_model, cache=TRUE}
 dat_model <- dat_long |>
   mutate(
     Age_c = Age - mean(Age, na.rm = TRUE),
@@ -542,15 +558,41 @@ dat_model <- dat_model |>
 # Join cci to dat_model
 dat_model <- dat_model |>
   left_join(cci_score, by = "Patient_id")
+
+# Identify diabetes patient
+diabetes_id <- his |> 
+  filter(icd_category %in% "E11" | icd_category %in% "E14" | icd_category %in% "E16")
+
+diabetes_id <- unique(diabetes_id$Patient_id)
+
+dat_model <- dat_model |>
+  mutate(diabetes = ifelse(dat_model$Patient_id %in% diabetes_ids, 1, 0))
+
+# Remove rater and distinct the rows
+dat_model <- dat_model |>
+  select(-Rater) |>
+  distinct()
 ```
 
-#### fit 1: no comorbidity
+
+```{r}
+# Remove position and collapse the four facial positions into one patient-level
+# dat_model <- dat_model |>
+#   group_by(Patient_id, Age, Sex, Metric, elixhauser_score, cci_score, diabetes) |>
+#   summarise(
+#     Score = as.integer(any(Score == 1), na.rm = TRUE), 
+#     .groups = "drop"
+#   )
+```
+
+
+#### Logistic fit 1: no comorbidity
+
 
 ```{r glmer fit, cache=TRUE}
 # fit1: no comorbidity index
 fit1 <- glmer(
-  Score ~ Position + Age_c + Metric * Sex + 
-    (1 | Rater) + (1 | Patient_id),
+  Score ~ Position + Age + Metric * Sex  + (1 | Patient_id),
   data = dat_model,
   family = binomial
 )
@@ -559,14 +601,14 @@ fit1 <- glmer(
 isSingular(fit1)
 summary(fit1)
 ```
-#### fit 2: Elixhauser
+
+#### Logistic fit 2: Elixhauser
 
 
 ```{r}
 # fit2: Elixhauser score
 fit2 <- glmer(
-  Score ~ Position + Age_c + Metric * Sex + Metric * elixhauser_score + 
-    (1 | Rater) + (1 | Patient_id),
+  Score ~ Position + Age + Metric * Sex + Metric * elixhauser_score + (1 | Patient_id),
   data = dat_model,
   family = binomial
 )
@@ -575,6 +617,8 @@ fit2 <- glmer(
 isSingular(fit2)
 summary(fit2)
 ```
+
+##### Estimate the elixhauser slope for each lesion type
 
 ```{r}
 # Estimate the elixhauser slope for each lesion type
@@ -592,14 +636,13 @@ summary(
 ```
 
 
+#### Logistic fit 3: CCI
 
-#### fit 3: CCI
 
 ```{r}
 # fit3: cci
 fit3 <- glmer(
-  Score ~ Position + Age_c + Metric * Sex + Metric * cci_score + 
-    (1 | Rater) + (1 | Patient_id),
+  Score ~ Position + Age + Metric * Sex + Metric * cci_score  + (1 | Patient_id),
   data = dat_model,
   family = binomial 
 )
@@ -608,6 +651,10 @@ fit3 <- glmer(
 isSingular(fit3)
 summary(fit3)
 ```
+
+
+##### Estimate the CCI slope for each lesion type
+
 
 ```{r}
 # Estimate the CCI slope for each lesion type
@@ -625,24 +672,13 @@ summary(
 ```
 
 
-#### fit 4: diabetes
+#### Logistic fit 4: diabetes
+
 
 ```{r}
-tmp <- his |> filter(icd_category %in% "E11" | icd_category %in% "E14" | icd_category %in% "E16")
-
-unique(tmp$Patient_id)
-
-diabetes_ids <- c(
-  "2026070201", "2026080601", "2026082502",
-  "2026052802", "2026082701"
-)
-
-dat_model$diabetes <- ifelse(dat_model$Patient_id %in% diabetes_ids, 1, 0)
-
 # fit4: diabetes
 fit4 <- glmer(
-  Score ~ Position + Age_c + Metric * Sex + Metric * factor(diabetes) + 
-    (1 | Rater) + (1 | Patient_id),
+  Score ~ Position + Age + Metric * Sex + Metric * factor(diabetes)  + (1 | Patient_id),
   data = dat_model,
   family = binomial 
 )
@@ -652,33 +688,182 @@ isSingular(fit4)
 summary(fit4)
 ```
 
+
+##### Estimate diabetes effects separately for each lesion
+
 ```{r}
-# Set diabetes = 0 as the reference group
-dat_model$diabetes <- factor(dat_model$diabetes, levels = c(0, 1))
-
-# Center age for model stability and interpretation
-dat_model$Age_c <- dat_model$Age - mean(dat_model$Age, na.rm = TRUE)
-
-# Logistic mixed-effects model
-fit_diabetes <- glmer(
-  Score ~ Metric * diabetes +
-    Position + Sex + Age_c +
-    (1 | Patient_id) + (1 | Rater),
-  data = dat_model,
-  family = binomial(link = "logit"),
-  control = glmerControl(optimizer = "bobyqa")
+# Estimate diabetes effects separately for each lesion
+emm_diabetes <- emmeans(
+  fit4,
+  ~ diabetes | Metric
 )
 
-isSingular(fit_diabetes)
-summary(fit_diabetes)
+# Compare diabetes = 1 with diabetes = 0 within each lesion
+diabetes_or <- pairs(
+  emm_diabetes,
+  reverse = TRUE
+)
+
+# Report odds ratios, 95% CIs, and P values
+summary(
+  diabetes_or,
+  type = "response",
+  infer = c(TRUE, TRUE),
+  adjust = "holm"
+)
+```
+
+#### Logistic fit 5: Elixhauser + diabetes
+
+```{r}
+fit5 <- glmer(
+  Score ~ Position + Age + Metric * Sex + Metric * elixhauser_score + 
+    Metric * factor(diabetes)  + (1 | Patient_id),
+  data = dat_model,
+  family = binomial 
+)
+
+# 3. Check convergence
+isSingular(fit5)
+summary(fit5)
+```
+
+##### Estimate the marginal effect
+
+```{r}
+# Estimate the Elixhauser slope for each lesion type
+elixhauser_effect <- emtrends(
+  fit5,
+  ~ Metric,
+  var = "elixhauser_score"
+)
+
+# Test whether the CCI slope differs from zero
+summary(
+  elixhauser_effect,
+  infer = c(TRUE, TRUE)
+)
 ```
 
 ```{r}
-library(emmeans)
-
 # Estimate diabetes effects separately for each lesion
 emm_diabetes <- emmeans(
-  fit_diabetes,
+  fit5,
+  ~ diabetes | Metric
+)
+
+# Compare diabetes = 1 with diabetes = 0 within each lesion
+diabetes_or <- pairs(
+  emm_diabetes,
+  reverse = TRUE
+)
+
+# Report odds ratios, 95% CIs, and P values
+summary(
+  diabetes_or,
+  type = "response",
+  infer = c(TRUE, TRUE),
+  adjust = "holm"
+)
+```
+#### Logistic fit 6: CCI and diabetes
+
+```{r}
+fit6 <- glmer(
+  Score ~ Age + Metric * Sex + Position * Metric * cci_score + 
+    Metric * factor(diabetes)  + (1 | Patient_id),
+  data = dat_model,
+  family = binomial 
+)
+
+# 3. Check convergence
+isSingular(fit6)
+summary(fit6)
+```
+
+```{r}
+# Estimate the Elixhauser slope for each lesion type
+cci_effect <- emtrends(
+  fit6,
+  ~ Metric,
+  var = "cci_score"
+)
+
+# Test whether the CCI slope differs from zero
+summary(
+  cci_effect,
+  infer = c(TRUE, TRUE)
+)
+```
+
+
+```{r}
+# Estimate diabetes effects separately for each lesion
+emm_diabetes <- emmeans(
+  fit6,
+  ~ diabetes | Metric
+)
+
+# Compare diabetes = 1 with diabetes = 0 within each lesion
+diabetes_or <- pairs(
+  emm_diabetes,
+  reverse = TRUE
+)
+
+# Report odds ratios, 95% CIs, and P values
+summary(
+  diabetes_or,
+  type = "response",
+  infer = c(TRUE, TRUE),
+  adjust = "holm"
+)
+```
+
+#### Logistic fit 7: all in
+
+```{r}
+fit7 <- glmer(
+  Score ~ Metric * (Position + cci_score + diabetes + Age) +
+    (1 | Patient_id),
+  data = dat_model,
+  family = binomial
+)
+```
+
+
+```{r}
+# Estimate the Elixhauser slope for each lesion type
+cci_effect <- emtrends(
+  fit7,
+  ~ Metric,
+  var = "cci_score"
+)
+
+# Test whether the CCI slope differs from zero
+summary(
+  cci_effect,
+  infer = c(TRUE, TRUE)
+)
+```
+
+```{r}
+age_effect <- emtrends(
+  fit7,
+  ~ Metric,
+  var = "Age"
+)
+
+# Test whether the CCI slope differs from zero
+summary(
+  age_effect,
+  infer = c(TRUE, TRUE)
+)
+```
+
+
+```{r}
+emm_diabetes <- emmeans(
+  fit7,
   ~ diabetes | Metric
 )
 
@@ -698,6 +883,15 @@ summary(
 ```
 
 
+
+#### Compare four models
+
+
+```{r}
+anova(fit1, fit2, fit3, fit4, fit5, fit6,  test = "Chisq")
+```
+
+
 ```{r}
 # emm_sex <- emmeans(
 #   fit,
@@ -711,7 +905,7 @@ summary(
 ```{r plot prob, fig.width=6, fig.asp=.618, out.width="100%", cache=TRUE}
 # Estimated probabilities
 emm_prob <- emmeans(
-  fit,
+  fit4,
   ~ Sex | Metric,
   type = "response"
 ) |>
@@ -719,7 +913,7 @@ emm_prob <- emmeans(
 
 # Sex comparison within each metric
 sex_p <- emmeans(
-  fit,
+  fit4,
   ~ Sex | Metric
 ) |>
   pairs() |>
@@ -817,55 +1011,6 @@ ggplot(
 
 逻辑回归分析显示，光老化皮损存在性别差异。女性人群毛细血管扩张及色素相关皮损风险较高；男性脂溢性角化、深层皱纹及浅表皱纹风险较高。
 
-### 6. 总分
-
-```{r}
-total_score_dat_model <- dat_model |>
-  group_by(Patient_id, Sex, Age, Position, Metric, elixhauser_score, cci_score, diabetes) |>
-  summarise(avg_score = mean(Score)) |>
-  ungroup()
-
-total_score_dat_model <- total_score_dat_model |>
-  group_by(Patient_id, Sex, Age, elixhauser_score, cci_score, diabetes) |>
-  summarise(total_score = sum(avg_score)) |>
-  ungroup()
-```
-
-#### fit total 1, no commorbidity, no diabetes
-
-```{r}
-fit_total1 <- lm(total_score ~ Sex + Age + elixhauser_score, 
-                 data = total_score_dat_model)
-
-summary(fit_total1)
-```
-
-#### Fit total 2: Elixhauser
-
-```{r}
-fit_total2 <- lm(total_score ~ Sex + Age + elixhauser_score, 
-                 data = total_score_dat_model)
-
-summary(fit_total2)
-```
-
-#### fit total 3: cci
-
-```{r}
-fit_total3 <- lm(total_score ~ Sex + Age + cci_score, 
-                 data = total_score_dat_model)
-
-summary(fit_total3)
-```
-
-#### fit total 4: diabetes
-
-```{r}
-fit_total4 <- lm(total_score ~ Sex + Age + factor(diabetes), 
-                 data = total_score_dat_model)
-
-summary(fit_total4)
-```
 
 
 ## 结论
