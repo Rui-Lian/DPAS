@@ -12,7 +12,9 @@ bibliography: references.bib
 csl: ama.csl
 ---
 
-nter-Rater Reliability of the Dermoscopic Photoaging Scale and Lesion-Specific Associations With Patient Characteristics
+Inter-Rater Reliability of the Dermoscopic Photoaging Scale and Lesion-Specific Associations With Patient Characteristics
+
+## Setup
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(
@@ -30,6 +32,7 @@ knitr::opts_chunk$set(
 
 options(digits = 3)
 ```
+
 
 ```{r packages}
 library(tidyverse)
@@ -92,6 +95,99 @@ raw_pt <- read_excel(
 )
 ```
 
+
+## Import HIS and calculate comorbidity: CCI and Exlihauser
+
+```{r Read the ICD10_CHN}
+icd10_chn<- read_excel("~/DPAS Reproducibility/data/ICD10_CHN.xlsx")
+```
+
+
+```{r read patient id, his table}
+pt_id <- read_excel(paste0(path, "/皮肤科48例信息1.xls"))
+
+# Column data type
+pt_id <- pt_id |>
+  mutate(
+    `序号` = as.character(序号),
+    `姓名` = as.character(姓名),
+    `性别` = as.character(性别),
+    `年龄` = as.character(年龄),
+    `身份证` = as.character(身份证),
+    `门诊号` = as.character(门诊号)
+  )
+
+# Change column names
+pt_id <- pt_id |>
+  rename(
+    Patient_id = 序号,
+    Name = 姓名,
+    Sex = 性别,
+    id_number = 身份证,
+    Age = 年龄,
+    OPD_id = 门诊号
+  )
+
+# Select columns in pt_id
+# Patient_id as key to connect dat long
+# id_number used to join the OPD, IPD HIS co-morbidity
+pt_id <- pt_id |>
+  select(Patient_id, id_number)
+```
+
+
+```{r extract his}
+# extract IPD his comorbidity 
+ipd_his <- extract_his(file_name = "IPD_HIS.xlsx", source = "ipd")
+
+# extract opd his comorbidity
+opd_his <- extract_his(file_name = "OPD_HIS.xlsx", source = "opd")
+
+# combine ipd and opd
+his <- rbind(ipd_his, opd_his)
+
+# Join his with pt_id to have the Patient_id used in dat_long
+his <- his |>
+  left_join(pt_id, by = "id_number")
+```
+
+
+```{r charlson and exlixhauser comorbidity index}
+# charlson
+charlson <- comorbidity(x = his, id = "Patient_id", code = "raw_icd", map = "charlson_icd10_quan", assign0 = TRUE) 
+charlson
+
+cci_score <- score(charlson, weights = "charlson", assign0 = TRUE)
+
+cci_score <- data.frame(
+  Patient_id = charlson$Patient_id, 
+  cci_score = cci_score
+)
+
+# elixhauser 
+elixhauser <- comorbidity(
+  x = his,
+  id = "Patient_id",
+  code = "raw_icd",
+  map = "elixhauser_icd10_quan",
+  assign0 = TRUE
+)
+
+# Calculate the van Walraven weighted score
+elixhauser_score <- score(
+  elixhauser,
+  weights = "vw",
+  assign0 = TRUE
+)
+
+# Inspect the results
+elixhauser_score <- data.frame(
+  Patient_id = elixhauser$Patient_id, 
+  elixhauser_score = elixhauser_score
+)
+```
+
+## Import DPAS as dat_long
 
 ```{r clean DPAS}
 # Rename DPAS columns
@@ -233,95 +329,30 @@ dat_long <- dat_long |>
   ))
 ```
 
+## Merge dat_long and comorbidity score and stratify cci
 
-```{r Read the ICD10_CHN}
-icd10_chn<- read_excel("~/DPAS Reproducibility/data/ICD10_CHN.xlsx")
+```{r merge cci}
+dat_long <- dat_long |>
+  left_join(cci_score)
 ```
 
 
-```{r read patient id, his table}
-pt_id <- read_excel(paste0(path, "/皮肤科48例信息1.xls"))
-
-# Column data type
-pt_id <- pt_id |>
+```{r}
+dat_long <- dat_long |>
   mutate(
-    `序号` = as.character(序号),
-    `姓名` = as.character(姓名),
-    `性别` = as.character(性别),
-    `年龄` = as.character(年龄),
-    `身份证` = as.character(身份证),
-    `门诊号` = as.character(门诊号)
+    cci_strata = case_when(
+      cci_score <= 1 ~ "≤1",
+      cci_score <= 3 ~ "2-3",
+      cci_score > 3  ~ ">3",
+    ),
+    cci_strata = factor(
+      cci_strata, 
+      levels = c("≤1", "2-3", ">3"), 
+      ordered = TRUE
+    )
   )
-
-# Change column names
-pt_id <- pt_id |>
-  rename(
-    Patient_id = 序号,
-    Name = 姓名,
-    Sex = 性别,
-    id_number = 身份证,
-    Age = 年龄,
-    OPD_id = 门诊号
-  )
-
-# Select columns in pt_id
-# Patient_id as key to connect dat long
-# id_number used to join the OPD, IPD HIS co-morbidity
-pt_id <- pt_id |>
-  select(Patient_id, id_number)
 ```
 
-
-```{r extract his}
-# extract IPD his comorbidity 
-ipd_his <- extract_his(file_name = "IPD_HIS.xlsx", source = "ipd")
-
-# extract opd his comorbidity
-opd_his <- extract_his(file_name = "OPD_HIS.xlsx", source = "opd")
-
-# combine ipd and opd
-his <- rbind(ipd_his, opd_his)
-
-# Join his with pt_id to have the Patient_id used in dat_long
-his <- his |>
-  left_join(pt_id, by = "id_number")
-```
-
-
-```{r charlson and exlixhauser comorbidity index}
-# charlson
-charlson <- comorbidity(x = his, id = "Patient_id", code = "raw_icd", map = "charlson_icd10_quan", assign0 = TRUE) 
-charlson
-
-cci_score <- score(charlson, weights = "charlson", assign0 = TRUE)
-
-cci_score <- data.frame(
-  Patient_id = charlson$Patient_id, 
-  cci_score = cci_score
-)
-
-# elixhauser 
-elixhauser <- comorbidity(
-  x = his,
-  id = "Patient_id",
-  code = "raw_icd",
-  map = "elixhauser_icd10_quan",
-  assign0 = TRUE
-)
-
-# Calculate the van Walraven weighted score
-elixhauser_score <- score(
-  elixhauser,
-  weights = "vw",
-  assign0 = TRUE
-)
-
-# Inspect the results
-elixhauser_score <- data.frame(
-  Patient_id = elixhauser$Patient_id, 
-  elixhauser_score = elixhauser_score
-)
-```
 
 ## 目的
 
@@ -343,29 +374,28 @@ elixhauser_score <- data.frame(
 
 
 ```{r Table 1}
-# Calculate the table 1
+# Calculate Table 1
 table1_df <- dat_long |>
-  select(Patient_id, Sex, Age) |>
-  
-  # keep_all: keep all the other cols from 1st row 
-  # corresponding to each unique patient
-  distinct(Patient_id, .keep_all = TRUE) |> 
+  select(Patient_id, Sex, Age, cci_strata) |>
+  distinct(Patient_id, .keep_all = TRUE) |>
   tbl_summary(
     by = Sex,
-    include = Age,
+    include = c(Age, cci_strata),
     statistic = list(
-      all_continuous() ~ "{mean} ({sd})"
+      all_continuous() ~ "{mean} ({sd})",
+      all_categorical() ~ "{n} ({p}%)"
     ),
-    
-    # Show a missing-value row only 
-    # if there are actually missing values in the variables being summarized.
     missing = "ifany"
   ) |>
-  add_p() |>
+  add_p(
+    test = list(
+      Age ~ "t.test",
+      cci_strata ~ "fisher.test"
+    )
+  ) |>
   as_tibble()
 
-# flextable to generate table 1
-# To be rendered in MS word
+# Render Table 1 in MS Word
 table1_df |>
   flextable() |>
   align(align = "center", part = "all") |>
@@ -374,10 +404,9 @@ table1_df |>
     border = fp_border(width = 2),
     part = "body"
   ) |>
-  set_caption("患者性别年龄") |>
+  set_caption("患者性别、年龄及合并症负担") |>
   autofit()
 ```
-
 
 \newpage
 
@@ -537,500 +566,102 @@ icc_metric |>
 
 ### 5. 混合效应逻辑回归
 
-
-```{r prepare data for modeling in dat_model, cache=TRUE}
-dat_model <- dat_long |>
-  mutate(
-    Metric = factor(Metric),
-    Position = factor(Position),
-    Sex = factor(Sex)
-  )
-
-# Remove metric 3, which does not occur among all patients
-# Inclusion of metric 3 lead to singular fitting
-dat_model <- dat_model |>
-  filter(!Metric == "皮肤萎缩")
-
-# Join elixhauser index to dat_model
-dat_model <- dat_model |>
-  left_join(elixhauser_score, by = "Patient_id")
-
-# Join cci to dat_model
-dat_model <- dat_model |>
-  left_join(cci_score, by = "Patient_id")
-
-# Identify diabetes patient
-diabetes_id <- his |> 
-  filter(icd_category %in% "E11" | icd_category %in% "E14" | icd_category %in% "E16")
-
-diabetes_id <- unique(diabetes_id$Patient_id)
-
-dat_model <- dat_model |>
-  mutate(diabetes = ifelse(dat_model$Patient_id %in% diabetes_id, 1, 0))
-```
+#### fit1_all_in
 
 ```{r}
-dat_model_1 <- dat_model |>
-  select(-Rater) |>
-  distinct()
-```
-
-
-
-```{r}
-# Remove position and collapse the four facial positions into one patient-level
-# dat_model <- dat_model |>
-#   group_by(Patient_id, Age, Sex, Metric, elixhauser_score, cci_score, diabetes) |>
-#   summarise(
-#     Score = as.integer(any(Score == 1), na.rm = TRUE), 
-#     .groups = "drop"
-#   )
-```
-
-```{r}
-dat_model_cci_levels_3 <- dat_model |>
-  mutate(
-    CCI_group = case_when(
-      cci_score <= 1 ~ "No/mild",
-      cci_score <= 3 ~ "Moderate",
-      cci_score > 3  ~ "Severe",
-      TRUE ~ NA_character_
-    ),
-    CCI_group = factor(
-      CCI_group,
-      levels = c("No/mild", "Moderate", "Severe"),
-      ordered = TRUE
-    )
-  )
-```
-
-
-```{r}
-dat_model_cci_levels_4 <- dat_model |>
-  mutate(
-    CCI_group = case_when(
-      cci_score == 0            ~ "None",
-      cci_score >= 1 & cci_score <= 2 ~ "Mild",
-      cci_score >= 3 & cci_score <= 4 ~ "Moderate",
-      cci_score > 4             ~ "Severe",
-      TRUE ~ NA_character_
-    ),
-    CCI_group = factor(
-      CCI_group,
-      levels = c("None", "Mild", "Moderate", "Severe"),
-      ordered = TRUE
-    )
-  )
-```
-
-
-#### Logistic fit 1: no comorbidity
-
-
-```{r glmer fit, cache=TRUE}
-# fit1: no comorbidity index
 fit1 <- glmer(
-  Score ~ Position + Age + Metric * Sex  + 
-    (1 | Rater) + (1 | Patient_id) ,
+  Score ~ Metric * (Sex + Age + cci_score) +
+    Position + Rater +
+    (1 | Patient_id),
   data = dat_model,
-  family = binomial
+  family = binomial(link = "logit"),
+  control = glmerControl(optimizer = "bobyqa")
 )
+```
 
-# 3. Check convergence
+```{r}
 isSingular(fit1)
+```
+
+```{r}
 summary(fit1)
 ```
+#### fit1_all_in maxfun 200000
 
-#### Logistic fit 2: include Elixhauser comorbidity
+optimizer (bobyqa) convergence code: 1 (bobyqa -- maximum number of function evaluations exceeded), try 
 
+The challenges are complex interaction terms. 
 
 ```{r}
-# fit2: Elixhauser score
-fit2 <- glmer(
-  Score ~ Position + Age + Metric * Sex + Metric * elixhauser_score + 
-  (1 | Rater) + (1 | Patient_id),
+ctrl <- glmerControl(
+  optimizer = "bobyqa",
+  optCtrl = list(maxfun = 200000)
+)
+
+fit1_200000 <- glmer(
+  Score ~ Metric * (Sex + Age + cci_score) +
+    Position + Rater +
+    (1 | Patient_id),
   data = dat_model,
-  family = binomial
-)
-
-# 3. Check convergence
-isSingular(fit2)
-summary(fit2)
-```
-
-##### Estimate the elixhauser slope for each lesion type
-
-```{r}
-# Estimate the elixhauser slope for each lesion type
-cci_effect <- emtrends(
-  fit2,
-  ~ Metric,
-  var = "elixhauser_score"
-)
-
-# Test whether the CCI slope differs from zero
-summary(
-  cci_effect,
-  infer = c(TRUE, TRUE)
+  family = binomial(link = "logit"),
+  control = ctrl
 )
 ```
 
-
-#### Logistic fit 3: CCI
-
+```{r}
+isSingular(fit1_200000)
+```
 
 ```{r}
-# fit3: cci
-fit3 <- glmer(
-  Score ~ Position + Age + Metric * Sex + Metric * cci_score  + 
-  (1 | Rater) + (1 | Patient_id),
+summary(fit1_200000)
+```
+
+#### fit1_all_in nloptwrap
+
+```{r}
+fit1_nloptwrap <- glmer(
+  Score ~ Metric * (Sex + Age + cci_score) +
+    Position + Rater +
+    (1 | Patient_id),
   data = dat_model,
-  family = binomial 
-)
-
-# 3. Check convergence
-isSingular(fit3)
-summary(fit3)
-```
-
-
-##### Estimate the CCI slope for each lesion type
-
-
-```{r}
-# Estimate the CCI slope for each lesion type
-cci_effect <- emtrends(
-  fit3,
-  ~ Metric,
-  var = "cci_score"
-)
-
-# Test whether the CCI slope differs from zero
-summary(
-  cci_effect,
-  infer = c(TRUE, TRUE)
-)
-```
-
-
-#### Logistic fit 4: diabetes
-
-
-```{r}
-# fit4: diabetes
-fit4 <- glmer(
-  Score ~ Position + Age + Metric * Sex + Metric * factor(diabetes)  + 
-    (1 | Rater)+(1 | Patient_id),
-  data = dat_model,
-  family = binomial 
-)
-
-# 3. Check convergence
-isSingular(fit4)
-summary(fit4)
-```
-
-
-##### Estimate diabetes effects separately for each lesion
-
-```{r}
-# Estimate diabetes effects separately for each lesion
-emm_diabetes <- emmeans(
-  fit4,
-  ~ diabetes | Metric
-)
-
-# Compare diabetes = 1 with diabetes = 0 within each lesion
-diabetes_or <- pairs(
-  emm_diabetes,
-  reverse = TRUE
-)
-
-# Report odds ratios, 95% CIs, and P values
-summary(
-  diabetes_or,
-  type = "response",
-  infer = c(TRUE, TRUE),
-  adjust = "holm"
-)
-```
-
-#### Logistic fit 5: Elixhauser + diabetes
-
-```{r}
-fit5 <- glmer(
-  Score ~ Position + Age + Metric * Sex + Metric * elixhauser_score + 
-    Metric * factor(diabetes)  + (1 | Rater) + (1 | Patient_id),
-  data = dat_model,
-  family = binomial 
-)
-
-# 3. Check convergence
-isSingular(fit5)
-summary(fit5)
-```
-
-##### Estimate the marginal effect
-
-```{r}
-# Estimate the Elixhauser slope for each lesion type
-elixhauser_effect <- emtrends(
-  fit5,
-  ~ Metric,
-  var = "elixhauser_score"
-)
-
-# Test whether the CCI slope differs from zero
-summary(
-  elixhauser_effect,
-  infer = c(TRUE, TRUE)
-)
-```
-
-```{r}
-# Estimate diabetes effects separately for each lesion
-emm_diabetes <- emmeans(
-  fit5,
-  ~ diabetes | Metric
-)
-
-# Compare diabetes = 1 with diabetes = 0 within each lesion
-diabetes_or <- pairs(
-  emm_diabetes,
-  reverse = TRUE
-)
-
-# Report odds ratios, 95% CIs, and P values
-summary(
-  diabetes_or,
-  type = "response",
-  infer = c(TRUE, TRUE),
-  adjust = "holm"
-)
-```
-#### Logistic fit 6: CCI and diabetes
-
-```{r}
-fit6 <- glmer(
-  Score ~ Age + Metric * Sex + Position * Metric * cci_score + 
-    Metric * factor(diabetes)  + (1 | Rater) + (1 | Patient_id),
-  data = dat_model,
-  family = binomial 
-)
-
-# 3. Check convergence
-isSingular(fit6)
-summary(fit6)
-```
-
-```{r}
-# Estimate the Elixhauser slope for each lesion type
-cci_effect <- emtrends(
-  fit6,
-  ~ Metric,
-  var = "cci_score"
-)
-
-# Test whether the CCI slope differs from zero
-summary(
-  cci_effect,
-  infer = c(TRUE, TRUE)
-)
-```
-
-
-```{r}
-# Estimate diabetes effects separately for each lesion
-emm_diabetes <- emmeans(
-  fit6,
-  ~ diabetes | Metric
-)
-
-# Compare diabetes = 1 with diabetes = 0 within each lesion
-diabetes_or <- pairs(
-  emm_diabetes,
-  reverse = TRUE
-)
-
-# Report odds ratios, 95% CIs, and P values
-summary(
-  diabetes_or,
-  type = "response",
-  infer = c(TRUE, TRUE),
-  adjust = "holm"
-)
-```
-
-#### Logistic fit 7: all in
-
-```{r}
-fit7 <- glmer(
-  Score ~ Metric * (Sex + cci_score  + Age ) + (1 | Patient_id), 
-  #+ (1 | Rater),
-  data = dat_model,
-  family = binomial,
+  family = binomial(link = "logit"),
   control = glmerControl(
-    optimizer = "nloptwrap"
-    #,optCtrl = list(maxfun = 200000)
+    optimizer = "nloptwrap", 
+    calc.derivs = TRUE
   )
 )
-
-isSingular(fit7)
-```
-
-```{r}
-summary(fit7)
-```
-
-
-
-```{r}
-# Sex
-emm_sex <- emmeans(
-  fit7,
-  ~ Sex | Metric
-)
-
-# Compare diabetes = 1 with diabetes = 0 within each lesion
-sex_or <- pairs(
-  emm_sex,
-  reverse = TRUE
-)
-
-# Report odds ratios, 95% CIs, and P values
-summary(
-  sex_or,
-  type = "response",
-  infer = c(TRUE, TRUE),
-  adjust = "holm"
-)
 ```
 
 
 ```{r}
-# Estimate the Elixhauser slope for each lesion type
-cci_effect <- emtrends(
-  fit7,
-  ~ Metric,
-  var = "cci_score"
-)
-
-# Test whether the CCI slope differs from zero
-summary(
-  cci_effect,
-  infer = c(TRUE, TRUE)
-)
+isSingular(fit1_nloptwrap)
 ```
 
 ```{r}
-age_effect <- emtrends(
-  fit7,
-  ~ Metric,
-  var = "Age"
-)
-
-# Test whether the CCI slope differs from zero
-summary(
-  age_effect,
-  infer = c(TRUE, TRUE)
-)
+summary(fit1_nloptwrap)
 ```
-
-
-
-
-##### model diagnosis
-
-###### step 1: Validate the analysis data
+##### fit1_nloptwrap diagnosis
 
 ```{r}
-library(lme4)
-library(dplyr)
-library(ggplot2)
+fit1_nloptwrap@optinfo$optimizer
 
-# Variables used by the model
-# model: Score ~ Metric * (Sex + Position + cci_score + factor(diabetes) + Age)
-model_vars <- colnames(dat_model)
-
-# Check missingness in model variables
-colSums(is.na(dat_model[model_vars]))
-
-# Check response coding
-table(dat_long$Score, useNA = "ifany")
-
-# Check factor levels
-lapply(
-  dat_model[c("Position", "Metric", "Sex", "diabetes")],
-  levels
-)
-
-# Check whether each patient has repeated observations
-dat_model %>%
-  count(Patient_id) %>%
-  summarise(
-    n_patients = n(),
-    min_rows = min(n),
-    median_rows = median(n),
-    max_rows = max(n)
-  )
-
-# Check outcome prevalence by lesion and sex
-dat_model %>%
-  group_by(Metric, Sex) %>%
-  summarise(
-    n = n(),
-    events = sum(Score == 1, na.rm = TRUE),
-    prevalence = mean(Score == 1, na.rm = TRUE),
-    .groups = "drop"
-  )
+fit1_nloptwrap@optinfo$conv$opt
 ```
-
-###### step 2: Inspect the fitting result and convergence warnings
 
 ```{r}
-# Basic model summary
-summary(fit7)
+#compare the estimate of fit1_200000 and fit1_nloptwrap
+cbind(
+  bobyqa = fixef(fit1_200000),
+  nloptwrap = fixef(fit1_nloptwrap)
+      )
 
-# Warnings and optimizer information
-fit7@optinfo$conv
-
-# Optimizer messages
-fit7@optinfo$conv$lme4$messages
-
-# Internal convergence diagnostics
-fit7@optinfo$derivs
-
-# Fixed-effect estimates and standard errors
-fixef(fit7)
-sqrt(diag(vcov(fit7)))
-
-# Log-likelihood and AIC
-logLik(fit7)
-AIC(fit7)
+logLik(fit1_200000)
+logLik(fit1_nloptwrap)
 ```
-
-###### Step 3 — Check singularity and random-effects variance
-
-```{r}
-# Is the model singular?
-isSingular(fit7, tol = 1e-4)
-
-# Estimated random-effect variances and SDs
-VarCorr(fit7)
-
-# Compact variance-component table
-as.data.frame(VarCorr(fit7))
-
-# Random-effect structure
-getME(fit7, "cnms")
-```
-
-
-###### Step 4 — Test convergence robustness across optimizers
 
 ```{r}
 # Compare available optimizers
-af <- allFit(fit7)
+af <- allFit(fit1_nloptwrap)
 
 # Summarise optimizer results
 summary(af)
@@ -1044,177 +675,14 @@ af_summary$sdcor
 af_summary$which.OK
 ```
 
+##### fit1_all_in nloptwrap post hoc
 
-#### Compare four models
-
-
-```{r}
-anova(fit1, fit2, fit3, fit4, fit5, fit6, fit7, test = "Chisq")
-```
-
+###### Age
 
 ```{r}
-# emm_sex <- emmeans(
-#   fit,
-#   ~ Sex | Metric,
-#   type = "response"
-# )
-#
-# pairs(emm_sex, reverse = TRUE)
-```
-
-
-```{r plot prob, fig.width=6, fig.asp=.618, out.width="100%", cache=TRUE}
-# Estimated probabilities
-emm_prob <- emmeans(
-  fit4,
-  ~ Sex | Metric,
-  type = "response"
-) |>
-  as.data.frame()
-
-# Sex comparison within each metric
-sex_p <- emmeans(
-  fit4,
-  ~ Sex | Metric
-) |>
-  pairs() |>
-  summary(infer = TRUE) |>
-  as.data.frame() |>
-  dplyr::mutate(
-    p_label = dplyr::case_when(
-      p.value < 0.001 ~ "p < 0.001",
-      TRUE ~ paste0("p = ", format.pval(p.value, digits = 2, eps = 0.001))
-    )
-  ) |>
-  dplyr::select(Metric, p_label)
-
-# Order metrics by mean probability
-metric_order <- emm_prob |>
-  dplyr::group_by(Metric) |>
-  dplyr::summarise(
-    mean_prob = mean(prob),
-    .groups = "drop"
-  ) |>
-  dplyr::arrange(mean_prob) |>
-  dplyr::pull(Metric)
-
-emm_prob <- emm_prob |>
-  dplyr::mutate(
-    Metric = factor(Metric, levels = metric_order)
-  )
-
-# Make p-value data frame use the same factor order
-sex_p <- sex_p |>
-  dplyr::mutate(
-    Metric = factor(Metric, levels = metric_order)
-  )
-
-ggplot(
-  emm_prob,
-  aes(x = prob, y = Metric, color = Sex)
-) +
-  geom_errorbar(
-    aes(
-      xmin = asymp.LCL,
-      xmax = asymp.UCL
-    ),
-    orientation = "y",
-    position = position_dodge(width = 0.5),
-    height = 0.15,
-    linewidth = 0.4
-  ) +
-  geom_point(
-    aes(shape = Sex),
-    position = position_dodge(width = 0.5),
-    size = 3
-  ) +
-  geom_hline(
-    yintercept = seq(
-      1.5,
-      nlevels(emm_prob$Metric) - 0.5,
-      by = 1
-    ),
-    color = "grey90",
-    linewidth = 0.3,
-    linetype = "dashed"
-  ) +
-  geom_text(
-    data = sex_p,
-    aes(
-      x = 0.78,
-      y = Metric,
-      label = p_label
-    ),
-    inherit.aes = FALSE,
-    hjust = 0,
-    color = "black",
-    size = 3.2
-  ) +
-  scale_x_continuous(
-    labels = scales::percent_format(accuracy = 1),
-    limits = c(0, 0.90),
-    expand = expansion(mult = c(0.02, 0.02))
-  ) +
-  scale_color_discrete_qualitative(palette = "Harmonic") +
-  labs(
-    x = "发生率",
-    y = "DPAS光老化类型",
-    color = "性别",
-    shape = "性别"
-  ) +
-  theme_classic(base_size = 12) +
-  theme(
-    legend.position = "top",
-    axis.line.y = element_blank(),
-    axis.ticks.y = element_blank()
-  )
-```
-
-逻辑回归分析显示，光老化皮损存在性别差异。女性人群毛细血管扩张及色素相关皮损风险较高；男性脂溢性角化、深层皱纹及浅表皱纹风险较高。
-
-#### Logistic fit 8: all in cci stratum
-
-```{r}
-fit8 <- glmer(
-  Score ~ Metric * (Sex + CCI_group  + Age  + Rater) + (1 | Patient_id), 
-  data = dat_model_cci_levels,
-  family = binomial,
-  control = glmerControl(
-    optimizer = "nloptwrap"
-    #,optCtrl = list(maxfun = 200000)
-  )
-)
-
-isSingular(fit8)
-summary(fit8)
-```
-
-```{r}
-# Sex
-emm_sex <- emmeans(
-  fit8,
-  ~ Sex | Metric
-)
-
-# Compare diabetes = 1 with diabetes = 0 within each lesion
-sex_or <- pairs(
-  emm_sex,
-  reverse = TRUE
-)
-
-# Report odds ratios, 95% CIs, and P values
-summary(
-  sex_or,
-  type = "response",
-  infer = c(TRUE, TRUE),
-  adjust = "holm"
-)
-```
-
-```{r}
+# Estimate the Elixhauser slope for each lesion type
 age_effect <- emtrends(
-  fit8,
+  fit1_nloptwrap,
   ~ Metric,
   var = "Age"
 )
@@ -1226,98 +694,24 @@ summary(
 )
 ```
 
-```{r}
-# cci group
-emm_cci <- emmeans(
-  fit8,
-  ~ CCI_group | Metric
-)
-
-# Compare diabetes = 1 with diabetes = 0 within each lesion
-cci_or <- pairs(
-  emm_cci,
-  reverse = TRUE
-)
-
-# Report odds ratios, 95% CIs, and P values
-summary(
-  cci_or,
-  type = "response",
-  infer = c(TRUE, TRUE),
-  adjust = "holm"
-)
-```
-
-#### Logistic fit 9: four tier cci
+###### Sex
 
 ```{r}
-fit9 <- glmer(
-  Score ~ Metric * (Sex + CCI_group  + Age  + Rater) + (1 | Patient_id), 
-  data = dat_model_cci_levels_4,
-  family = binomial,
-  control = glmerControl(
-    optimizer = "nloptwrap"
-    #,optCtrl = list(maxfun = 200000)
-  )
-)
-
-isSingular(fit9)
-summary(fit9)
-```
-
-```{r}
-# Sex
-emm_sex <- emmeans(
-  fit9,
+# Estimate diabetes effects separately for each lesion
+sex_effect <- emmeans(
+  fit1_nloptwrap,
   ~ Sex | Metric
 )
 
 # Compare diabetes = 1 with diabetes = 0 within each lesion
 sex_or <- pairs(
-  emm_sex,
+  sex_effect,
   reverse = TRUE
 )
 
 # Report odds ratios, 95% CIs, and P values
 summary(
-  sex_or,
-  type = "response",
-  infer = c(TRUE, TRUE),
-  adjust = "holm"
-)
-```
-
-```{r}
-age_effect <- emtrends(
-  fit9,
-  ~ Metric,
-  var = "Age"
-)
-
-# Test whether the CCI slope differs from zero
-summary(
-  age_effect,
-  infer = c(TRUE, TRUE)
-)
-```
-
-
-```{r}
-# cci group
-emm_cci <- emmeans(
-  fit9,
-  ~ CCI_group | Metric
-)
-
-# Compare diabetes = 1 with diabetes = 0 within each lesion
-cci_or <- pairs(
-  emm_cci,
-  reverse = TRUE
-)
-
-# Report odds ratios, 95% CIs, and P values
-summary(
-  cci_or,
+  sex_effect,
   type = "response",
   infer = c(TRUE, TRUE),
   adjust = "holm"
@@ -1325,63 +719,12 @@ summary(
 ```
 
 
-#### Logistic fit 10: rater fixed
+###### cci_score
 
 ```{r}
-fit10 <- glmer(
-  Score ~ Metric * (Sex + cci_score  + Age  + Rater) + (1 | Patient_id), 
-  data = dat_model_cci_levels_4,
-  family = binomial,
-  control = glmerControl(
-    optimizer = "nloptwrap"
-    #,optCtrl = list(maxfun = 200000)
-  )
-)
-
-isSingular(fit10)
-summary(fit10)
-```
-
-```{r}
-# Sex
-emm_sex <- emmeans(
-  fit10,
-  ~ Sex | Metric
-)
-
-# Compare diabetes = 1 with diabetes = 0 within each lesion
-sex_or <- pairs(
-  emm_sex,
-  reverse = TRUE
-)
-
-# Report odds ratios, 95% CIs, and P values
-summary(
-  sex_or,
-  type = "response",
-  infer = c(TRUE, TRUE),
-  adjust = "holm"
-)
-```
-
-```{r}
-age_effect <- emtrends(
-  fit10,
-  ~ Metric,
-  var = "Age"
-)
-
-# Test whether the CCI slope differs from zero
-summary(
-  age_effect,
-  infer = c(TRUE, TRUE)
-)
-```
-
-
-```{r}
+# Estimate the Elixhauser slope for each lesion type
 cci_effect <- emtrends(
-  fit10,
+  fit1_nloptwrap,
   ~ Metric,
   var = "cci_score"
 )
@@ -1391,66 +734,5 @@ summary(
   cci_effect,
   infer = c(TRUE, TRUE)
 )
-```
-
-```{r}
-ft_all <- allFit(fit10)
-```
-
-
-## 结论
-
-1.  在高原地区，毛细血管扩张、脂溢性角化以及色素沉着斑是较为常见的主要光老化皮损。不同类型的光老化皮损存在明显的性别差异。
-
-2.  DPAS量表重现性优秀，经过培训，不同皮肤科职级人员均能胜任。
-
-## 参考文献
-
-
-## Model diagnosis
-
-```{r}
-library(dplyr)
-library(tidyr)
-
-# Outcome counts by lesion
-dat_model %>%
-  count(Metric, Score) %>%
-  pivot_wider(
-    names_from = Score,
-    values_from = n,
-    values_fill = 0,
-    names_prefix = "Score_"
-  )
-
-# Outcome counts by lesion and position
-dat_model %>%
-  count(Metric, Position, Score) %>%
-  pivot_wider(
-    names_from = Score,
-    values_from = n,
-    values_fill = 0,
-    names_prefix = "Score_"
-  )
-
-# Outcome counts by lesion and sex
-dat_model %>%
-  count(Metric, Sex, Score) %>%
-  pivot_wider(
-    names_from = Score,
-    values_from = n,
-    values_fill = 0,
-    names_prefix = "Score_"
-  )
-
-# Outcome counts by lesion and diabetes
-dat_model %>%
-  count(Metric, diabetes, Score) %>%
-  pivot_wider(
-    names_from = Score,
-    values_from = n,
-    values_fill = 0,
-    names_prefix = "Score_"
-  )
 ```
 
