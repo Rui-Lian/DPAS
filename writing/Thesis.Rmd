@@ -14,7 +14,9 @@ csl: ama.csl
 
 Inter-Rater Reliability of the Dermoscopic Photoaging Scale and Lesion-Specific Associations With Patient Characteristics
 
-## Setup
+## 1 Setup
+
+### 1.1 knitr
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(
@@ -30,17 +32,23 @@ knitr::opts_chunk$set(
   ## Animate: combine multiple plots into an animation!
 )
 
+
+```
+
+### 1.2 Arguments
+
+```{r}
+# Numeric digits
 options(digits = 3)
 ```
 
+### 1.3 Packages
 
 ```{r packages}
 library(tidyverse)
 library(readxl)
-library(dplyr)
 library(tidyr)
 library(psych) # ICC
-library(ggplot2)
 library(colorspace)
 library(showtext)
 showtext_auto()
@@ -57,6 +65,7 @@ library(officer)
 library(comorbidity)
 ```
 
+### 1.4 Themes
 
 ```{r ggplot theme set}
 theme_set(
@@ -64,61 +73,48 @@ theme_set(
 )
 ```
 
+### 1.5 Path
+
+```{r}
+# Project path
+project_path <- "~/DPAS Reproducibility"
+
+# data, utils, images path
+data_path <- file.path(project_path, "data")
+utils_path <- file.path(project_path, "utils")
+image_path <- file.path(project_path, "images")
+```
+
+### 1.6 Utility functions
 
 ```{r Utility function}
 # Path of utils
-utils.path <- "~/DPAS Reproducibility/utils"
 
 # Calculate ICC on the total DPAS score
-source(file.path(utils.path, "calculate_total_icc.R"))
+source(file.path(utils_path, "calculate_total_icc.R"))
 
 # Calculate the ICC on each metric (lesion)
-source(file.path(utils.path, "calculate_metric_icc.R"))
+source(file.path(utils_path, "calculate_metric_icc.R"))
 
 # Function to extract HIS co-morbidity info
-source(file.path(utils.path, "extract_his.R"))
+source(file.path(utils_path, "extract_his.R"))
 ```
 
 
-```{r data import}
-# Path of raw data
-path <- "~/DPAS Reproducibility/data"
+## 2 Import and clean data
 
-# Read the DPAS48, 48 patients DPAS by 4 raters
-raw_dpas <- read_excel(
-  file.path(path, "DPAS48.xlsx")
-)
+### 2.1 patient id info
 
-# Read patient age and sex
-raw_pt <- read_excel(
-  file.path(path, "DPAS48_pt_info.xls")
-)
+```{r}
+# pt_id_0: raw patient info
+pt_id_0 <- read_excel(file.path(data_path, "皮肤科48例信息1.xls"))
 ```
 
+#### 2.1.1 Column names to English
 
-## Import HIS and calculate comorbidity: CCI and Exlihauser
-
-```{r Read the ICD10_CHN}
-icd10_chn<- read_excel("~/DPAS Reproducibility/data/ICD10_CHN.xlsx")
-```
-
-
-```{r read patient id, his table}
-pt_id <- read_excel(paste0(path, "/皮肤科48例信息1.xls"))
-
-# Column data type
-pt_id <- pt_id |>
-  mutate(
-    `序号` = as.character(序号),
-    `姓名` = as.character(姓名),
-    `性别` = as.character(性别),
-    `年龄` = as.character(年龄),
-    `身份证` = as.character(身份证),
-    `门诊号` = as.character(门诊号)
-  )
-
-# Change column names
-pt_id <- pt_id |>
+```{r}
+# pt_id_1_colname: Change column names to English
+pt_id_1_colname <- pt_id_0 |>
   rename(
     Patient_id = 序号,
     Name = 姓名,
@@ -127,71 +123,49 @@ pt_id <- pt_id |>
     Age = 年龄,
     OPD_id = 门诊号
   )
+```
 
-# Select columns in pt_id
-# Patient_id as key to connect dat long
-# id_number used to join the OPD, IPD HIS co-morbidity
-pt_id <- pt_id |>
-  select(Patient_id, id_number)
+#### 2.1.2 Column re-value
+
+```{r}
+# pt_id_2_colvalue: revalue column values
+pt_id_2_colvalue <- pt_id_1_colname |>
+  mutate(Sex = case_when(
+    Sex == "男" ~ "Male", 
+    Sex == "女" ~ "Female"
+  ))
+```
+
+#### 2.1.3 Column type
+
+```{r}
+# pt_id_3_coltype: Column types
+pt_id_3_coltype <- pt_id_2_colvalue |>
+  mutate(
+    Patient_id = as.character(Patient_id), 
+    Name = as.character(Name), 
+    Sex = as.factor(Sex), 
+    Age = as.numeric(Age), 
+    id_number = as.character(id_number), 
+    OPD_id = as.character(OPD_id)
+  )
 ```
 
 
-```{r extract his}
-# extract IPD his comorbidity 
-ipd_his <- extract_his(file_name = "IPD_HIS.xlsx", source = "ipd")
+### 2.2 DPAS48
 
-# extract opd his comorbidity
-opd_his <- extract_his(file_name = "OPD_HIS.xlsx", source = "opd")
-
-# combine ipd and opd
-his <- rbind(ipd_his, opd_his)
-
-# Join his with pt_id to have the Patient_id used in dat_long
-his <- his |>
-  left_join(pt_id, by = "id_number")
-```
-
-
-```{r charlson and exlixhauser comorbidity index}
-# charlson
-charlson <- comorbidity(x = his, id = "Patient_id", code = "raw_icd", map = "charlson_icd10_quan", assign0 = TRUE) 
-charlson
-
-cci_score <- score(charlson, weights = "charlson", assign0 = TRUE)
-
-cci_score <- data.frame(
-  Patient_id = charlson$Patient_id, 
-  cci_score = cci_score
-)
-
-# elixhauser 
-elixhauser <- comorbidity(
-  x = his,
-  id = "Patient_id",
-  code = "raw_icd",
-  map = "elixhauser_icd10_quan",
-  assign0 = TRUE
-)
-
-# Calculate the van Walraven weighted score
-elixhauser_score <- score(
-  elixhauser,
-  weights = "vw",
-  assign0 = TRUE
-)
-
-# Inspect the results
-elixhauser_score <- data.frame(
-  Patient_id = elixhauser$Patient_id, 
-  elixhauser_score = elixhauser_score
+```{r data import}
+# Read the DPAS48, 48 patients DPAS by 4 raters
+dpas_0 <- read_excel(
+  file.path(data_path, "DPAS48.xlsx")
 )
 ```
 
-## Import DPAS as dat_long
+#### 2.2.1 Column names to English
 
-```{r clean DPAS}
-# Rename DPAS columns
-clean_dpas <- raw_dpas |>
+```{r}
+# Step 1. Rename columns to English
+dpas_1_colname <- dpas_0 |>
   rename(
     Patient_id = 患者,
     Rater = 监察人
@@ -231,12 +205,25 @@ clean_dpas <- raw_dpas |>
     ~ paste0("Chin", sub("^下", "", .x)),
     matches("^下\\d+$")
   )
+```
 
+#### 2.2.2 Column re-valuePatient_id as character
+
+```{r}
+# Step 2. column `患者` as character
+dpas_2_colvalue <- dpas_1_colname |>
+  mutate(Patient_id = as.character(Patient_id))
+```
+
+#### 2.2.3 Long format
+
+```{r}
+# Step 3. Long format
 # Long format
-clean_dpas_long <- clean_dpas |>
+dpas_3_long <- dpas_2_colvalue |>
   pivot_longer(
     # columns to be converted to long format
-    cols = 3:ncol(clean_dpas),
+    cols = 3:ncol(dpas_2_colvalue),
     names_to = "Position_metric",
     values_to = "Score"
   ) |>
@@ -252,22 +239,138 @@ clean_dpas_long <- clean_dpas |>
     sep = "(?<=\\D)(?=\\d)",
     convert = TRUE
   )
+```
 
-# Cleaning patient info
-clean_pt <- raw_pt |>
-  rename(
-    Patient_id = 姓名,
-    Sex = 性别,
-    Age = 年龄
-  ) |>
+
+#### 2.2.4 Lesion id to lesion names in Chinese
+
+```{r}
+# Step 4: Lesion id to lesion names in Chinese
+dpas_4_lesionCHN <- dpas_3_long |>
+  mutate(Metric = case_when(
+    Metric == "1" ~ "皮肤暗黄",
+    Metric == "2" ~ "黄色丘疹",
+    Metric == "3" ~ "皮肤萎缩",
+    Metric == "4" ~ "痣",
+    Metric == "5" ~ "色素沉着斑",
+    Metric == "6" ~ "毛细血管扩张",
+    Metric == "7" ~ "脂溢性角化",
+    Metric == "8" ~ "老年性粉刺",
+    Metric == "9" ~ "深层皱纹",
+    Metric == "10" ~ "浅表皱纹",
+    Metric == "11" ~ "网状皱纹"
+  ))
+```
+
+#### 2.2.5 Position to CHN names
+
+```{r}
+# Step 5: four position in English
+# Revalue the 4 positions
+dpas_5_positionCHN <- dpas_4_lesionCHN |>
+  mutate(Position = case_when(
+    Position == "Chin" ~ "下颌",
+    Position == "Forehead" ~ "前额",
+    Position == "Left_cheek" ~ "左颧骨",
+    Position == "Right_cheek" ~ "右颧骨"
+  ))
+```
+
+#### 2.2.6 Column type
+
+```{r}
+dpas_6_coltype <- dpas_5_positionCHN |>
   mutate(
-    Sex = recode(
-      Sex,
-      "男" = "Male",
-      "女" = "Female"
-    )
+    Rater = as.factor(Rater), 
+    Position = as.factor(Position), 
+    Metric = as.factor(Metric)
   )
 ```
+
+
+### 2.3 Import HIS and calculate comorbidity: CCI and Elixhauser
+
+#### 2.3.1 Read icd10_chn
+
+```{r Read the ICD10_CHN}
+icd10_chn<- read_excel("~/DPAS Reproducibility/data/ICD10_CHN.xlsx")
+```
+
+
+#### 2.3.2 Extract IPD HIS
+
+```{r}
+# extract IPD his comorbidity 
+ipd_his <- extract_his(file_name = "IPD_HIS.xlsx", source = "ipd")
+```
+
+#### 2.3.3 Extract OPD HIS
+
+```{r}
+# extract opd his comorbidity
+opd_his <- extract_his(file_name = "OPD_HIS.xlsx", source = "opd")
+```
+
+#### 2.3.4 Combine OPD and IPD HIS
+
+```{r}
+# combine ipd and opd
+his <- rbind(ipd_his, opd_his)
+```
+
+#### 2.3.5 Calculate comorbidity index
+
+##### 2.3.5.1 Charlson Comorbidity Index (CCI)
+
+```{r charlson and elixhauser comorbidity index}
+# charlson
+charlson <- comorbidity(x = his, 
+                        id = "id_number", 
+                        code = "raw_icd", 
+                        map = "charlson_icd10_quan", 
+                        assign0 = TRUE) 
+
+charlson
+
+cci_score <- score(charlson, weights = "charlson", assign0 = TRUE)
+
+cci_score <- data.frame(
+   = charlson$Patient_id, 
+  cci_score = cci_score
+)
+```
+
+
+```{r}
+
+# elixhauser 
+elixhauser <- comorbidity(
+  x = his,
+  id = "Patient_id",
+  code = "raw_icd",
+  map = "elixhauser_icd10_quan",
+  assign0 = TRUE
+)
+
+# Calculate the van Walraven weighted score
+elixhauser_score <- score(
+  elixhauser,
+  weights = "vw",
+  assign0 = TRUE
+)
+
+# Inspect the results
+elixhauser_score <- data.frame(
+  Patient_id = elixhauser$Patient_id, 
+  elixhauser_score = elixhauser_score
+)
+```
+
+
+
+
+## Import DPAS as dat_long
+
 
 
 ```{r Merge DPAS and pt_info}
@@ -303,30 +406,9 @@ dat_long <- dat_long |>
     Sex == "Male" ~ "男"
   ))
 
-# 11 lesions metrics
-dat_long <- dat_long |>
-  mutate(Metric = case_when(
-    Metric == "1" ~ "皮肤暗黄",
-    Metric == "2" ~ "黄色丘疹",
-    Metric == "3" ~ "皮肤萎缩",
-    Metric == "4" ~ "痣",
-    Metric == "5" ~ "色素沉着斑",
-    Metric == "6" ~ "毛细血管扩张",
-    Metric == "7" ~ "脂溢性角化",
-    Metric == "8" ~ "老年性粉刺",
-    Metric == "9" ~ "深层皱纹",
-    Metric == "10" ~ "浅表皱纹",
-    Metric == "11" ~ "网状皱纹"
-  ))
 
-# Revalue the 4 positions
-dat_long <- dat_long |>
-  mutate(Position = case_when(
-    Position == "Chin" ~ "下颌",
-    Position == "Forehead" ~ "前额",
-    Position == "Left_cheek" ~ "左颧骨",
-    Position == "Right_cheek" ~ "右颧骨"
-  ))
+
+
 ```
 
 ## Merge dat_long and comorbidity score and stratify cci
@@ -573,7 +655,7 @@ fit1 <- glmer(
   Score ~ Metric * (Sex + Age + cci_score) +
     Position + Rater +
     (1 | Patient_id),
-  data = dat_model,
+  data = dat_long,
   family = binomial(link = "logit"),
   control = glmerControl(optimizer = "bobyqa")
 )
