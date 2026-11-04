@@ -194,7 +194,18 @@ charlson_score <- data.frame(
    id_number = charlson$id_number, 
    charlson_score = charlson_score
 )
+
+# Charlson index strata
+charlson_score <- charlson_score |>
+  mutate(
+    cci_strata = case_when(
+      charlson_score <= 1 ~ "≤1",
+      charlson_score <= 3 ~ "2-3",
+      charlson_score > 3  ~ ">3"
+)
+  )
 ```
+
 
 ##### 2.2.5.2 Elixhauser Comorbodity Index
 
@@ -294,7 +305,7 @@ dpas_3_long <- dpas_2_colvalue |>
   pivot_longer(
     # columns to be converted to long format
     cols = 3:ncol(dpas_2_colvalue),
-    names_to = "Position_metric",
+    names_to = "Position_Lesion",
     values_to = "Score"
   ) |>
   # Regex
@@ -304,8 +315,8 @@ dpas_3_long <- dpas_2_colvalue |>
   # \\d  : the immediate character ahead of the current position is a digit
   # the regex engine tests positions (boundaries) in the string
   separate(
-    Position_metric,
-    into = c("Position", "Metric"),
+    Position_Lesion,
+    into = c("Position", "Lesion"),
     sep = "(?<=\\D)(?=\\d)",
     convert = TRUE
   )
@@ -316,18 +327,18 @@ dpas_3_long <- dpas_2_colvalue |>
 ```{r}
 # Step 4: Lesion id to lesion names in Chinese
 dpas_4_lesionCHN <- dpas_3_long |>
-  mutate(Metric = case_when(
-    Metric == "1" ~ "皮肤暗黄",
-    Metric == "2" ~ "黄色丘疹",
-    Metric == "3" ~ "皮肤萎缩",
-    Metric == "4" ~ "痣",
-    Metric == "5" ~ "色素沉着斑",
-    Metric == "6" ~ "毛细血管扩张",
-    Metric == "7" ~ "脂溢性角化",
-    Metric == "8" ~ "老年性粉刺",
-    Metric == "9" ~ "深层皱纹",
-    Metric == "10" ~ "浅表皱纹",
-    Metric == "11" ~ "网状皱纹"
+  mutate(Lesion = case_when(
+    Lesion == "1" ~ "皮肤暗黄",
+    Lesion == "2" ~ "黄色丘疹",
+    Lesion == "3" ~ "皮肤萎缩",
+    Lesion == "4" ~ "痣",
+    Lesion == "5" ~ "色素沉着斑",
+    Lesion == "6" ~ "毛细血管扩张",
+    Lesion == "7" ~ "脂溢性角化",
+    Lesion == "8" ~ "老年性粉刺",
+    Lesion == "9" ~ "深层皱纹",
+    Lesion == "10" ~ "浅表皱纹",
+    Lesion == "11" ~ "网状皱纹"
   ))
 ```
 
@@ -352,7 +363,7 @@ dpas_6_coltype <- dpas_5_positionCHN |>
   mutate(
     Rater = as.factor(Rater), 
     Position = as.factor(Position), 
-    Metric = as.factor(Metric)
+    Lesion = as.factor(Lesion)
   )
 ```
 
@@ -452,8 +463,14 @@ knitr::include_graphics("~/DPAS Reproducibility/images/DPAS10Lesions.png")
 ```
 
 
+##################### checkpoint
+
+Decision to be made: 
+
+Find new way to consolidate the results from four raters. 
+
 ```{r metric by sex,fig.width=7, fig.asp=.618, out.width="100%"}
-score_sex_position_metric <- dat_long |>
+score_sex_position_lesion <- dat_long |>
   group_by(Sex, Position, Metric) |>
   summarise(n = sum(Score) / 4) |>
   mutate(pct = n / 48)
