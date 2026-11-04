@@ -31,8 +31,6 @@ knitr::opts_chunk$set(
   ## hold: all figures are held and placed at the end of the chunk
   ## Animate: combine multiple plots into an animation!
 )
-
-
 ```
 
 ### 1.2 Arguments
@@ -89,7 +87,6 @@ image_path <- file.path(project_path, "images")
 
 ```{r Utility function}
 # Path of utils
-
 # Calculate ICC on the total DPAS score
 source(file.path(utils_path, "calculate_total_icc.R"))
 
@@ -99,7 +96,6 @@ source(file.path(utils_path, "calculate_metric_icc.R"))
 # Function to extract HIS co-morbidity info
 source(file.path(utils_path, "extract_his.R"))
 ```
-
 
 ## 2 Import and clean data
 
@@ -151,8 +147,82 @@ pt_id_3_coltype <- pt_id_2_colvalue |>
   )
 ```
 
+### 2.2 Import HIS and calculate comorbidity: CCI and Elixhauser
 
-### 2.2 DPAS48
+#### 2.2.1 Read icd10_chn
+
+```{r Read the ICD10_CHN}
+icd10_chn<- read_excel("~/DPAS Reproducibility/data/ICD10_CHN.xlsx")
+```
+
+#### 2.2.2 Extract IPD HIS
+
+```{r}
+# extract IPD his comorbidity 
+ipd_his <- extract_his(file_name = "IPD_HIS.xlsx", source = "ipd")
+```
+
+#### 2.2.3 Extract OPD HIS
+
+```{r}
+# extract opd his comorbidity
+opd_his <- extract_his(file_name = "OPD_HIS.xlsx", source = "opd")
+```
+
+#### 2.2.4 Combine OPD and IPD HIS
+
+```{r}
+# combine ipd and opd
+his <- rbind(ipd_his, opd_his)
+```
+
+#### 2.2.5 Calculate comorbidity index
+
+##### 2.2.5.1 Charlson Comorbidity Index (CCI)
+
+```{r charlson and elixhauser comorbidity index}
+# charlson
+charlson <- comorbidity(x = his, 
+                        id = "id_number", 
+                        code = "raw_icd", 
+                        map = "charlson_icd10_quan", 
+                        assign0 = TRUE) 
+
+charlson_score <- score(charlson, weights = "charlson", assign0 = TRUE)
+
+charlson_score <- data.frame(
+   id_number = charlson$id_number, 
+   charlson_score = charlson_score
+)
+```
+
+##### 2.2.5.2 Elixhauser Comorbodity Index
+
+```{r}
+# elixhauser 
+elixhauser <- comorbidity(
+  x = his,
+  id = "id_number",
+  code = "raw_icd",
+  map = "elixhauser_icd10_quan",
+  assign0 = TRUE
+)
+
+# Calculate the van Walraven weighted score
+elixhauser_score <- score(
+  elixhauser,
+  weights = "vw",
+  assign0 = TRUE
+)
+
+# Inspect the results
+elixhauser_score <- data.frame(
+  Patient_id = elixhauser$id_number, 
+  elixhauser_score = elixhauser_score
+)
+```
+
+### 2.3 Import DPAS48
 
 ```{r data import}
 # Read the DPAS48, 48 patients DPAS by 4 raters
@@ -161,7 +231,7 @@ dpas_0 <- read_excel(
 )
 ```
 
-#### 2.2.1 Column names to English
+#### 2.3.1 Column names to English
 
 ```{r}
 # Step 1. Rename columns to English
@@ -207,7 +277,7 @@ dpas_1_colname <- dpas_0 |>
   )
 ```
 
-#### 2.2.2 Column re-valuePatient_id as character
+#### 2.3.2 Column re-valuePatient_id as character
 
 ```{r}
 # Step 2. column `患者` as character
@@ -215,7 +285,7 @@ dpas_2_colvalue <- dpas_1_colname |>
   mutate(Patient_id = as.character(Patient_id))
 ```
 
-#### 2.2.3 Long format
+#### 2.3.3 Long format
 
 ```{r}
 # Step 3. Long format
@@ -241,8 +311,7 @@ dpas_3_long <- dpas_2_colvalue |>
   )
 ```
 
-
-#### 2.2.4 Lesion id to lesion names in Chinese
+#### 2.3.4 Lesion id to lesion names in Chinese
 
 ```{r}
 # Step 4: Lesion id to lesion names in Chinese
@@ -262,7 +331,7 @@ dpas_4_lesionCHN <- dpas_3_long |>
   ))
 ```
 
-#### 2.2.5 Position to CHN names
+#### 2.3.5 Position to CHN names
 
 ```{r}
 # Step 5: four position in English
@@ -276,7 +345,7 @@ dpas_5_positionCHN <- dpas_4_lesionCHN |>
   ))
 ```
 
-#### 2.2.6 Column type
+#### 2.3.6 Column type
 
 ```{r}
 dpas_6_coltype <- dpas_5_positionCHN |>
@@ -287,153 +356,34 @@ dpas_6_coltype <- dpas_5_positionCHN |>
   )
 ```
 
+## 3. Data joining
 
-### 2.3 Import HIS and calculate comorbidity: CCI and Elixhauser
-
-#### 2.3.1 Read icd10_chn
-
-```{r Read the ICD10_CHN}
-icd10_chn<- read_excel("~/DPAS Reproducibility/data/ICD10_CHN.xlsx")
-```
-
-
-#### 2.3.2 Extract IPD HIS
+### 3.1 leftJoin pt_id_3_coltype with charlson index
 
 ```{r}
-# extract IPD his comorbidity 
-ipd_his <- extract_his(file_name = "IPD_HIS.xlsx", source = "ipd")
+# join patient info in pt_id_3_coltype
+# with charlson_score
+# the key is the id_number
+dat_0 <- pt_id_3_coltype |>
+  left_join(charlson_score, by = join_by("id_number"))
 ```
 
-#### 2.3.3 Extract OPD HIS
+### 3.2 left join dat_0 with dpas_6_coltype
 
 ```{r}
-# extract opd his comorbidity
-opd_his <- extract_his(file_name = "OPD_HIS.xlsx", source = "opd")
+dat_1 <- dat_0 |>
+  left_join(dpas_6_coltype, by = join_by("Patient_id"))
 ```
 
-#### 2.3.4 Combine OPD and IPD HIS
+### 3.3 Remove patients opd_id and id_number
 
 ```{r}
-# combine ipd and opd
-his <- rbind(ipd_his, opd_his)
+dat_2 <- dat_1 |>
+  select(-OPD_id, -id_number)
+
+dat_final <- dat_2
 ```
 
-#### 2.3.5 Calculate comorbidity index
-
-##### 2.3.5.1 Charlson Comorbidity Index (CCI)
-
-```{r charlson and elixhauser comorbidity index}
-# charlson
-charlson <- comorbidity(x = his, 
-                        id = "id_number", 
-                        code = "raw_icd", 
-                        map = "charlson_icd10_quan", 
-                        assign0 = TRUE) 
-
-charlson
-
-cci_score <- score(charlson, weights = "charlson", assign0 = TRUE)
-
-cci_score <- data.frame(
-   = charlson$Patient_id, 
-  cci_score = cci_score
-)
-```
-
-
-```{r}
-
-# elixhauser 
-elixhauser <- comorbidity(
-  x = his,
-  id = "Patient_id",
-  code = "raw_icd",
-  map = "elixhauser_icd10_quan",
-  assign0 = TRUE
-)
-
-# Calculate the van Walraven weighted score
-elixhauser_score <- score(
-  elixhauser,
-  weights = "vw",
-  assign0 = TRUE
-)
-
-# Inspect the results
-elixhauser_score <- data.frame(
-  Patient_id = elixhauser$Patient_id, 
-  elixhauser_score = elixhauser_score
-)
-```
-
-
-
-
-## Import DPAS as dat_long
-
-
-
-```{r Merge DPAS and pt_info}
-# Create canonical dataset, dat_long
-# and join patient info
-dat_long <- clean_pt |>
-  left_join(
-    clean_dpas_long,
-    by = "Patient_id"
-  )
-
-# data class of each column
-dat_long <- dat_long %>%
-  mutate(
-    Patient_id = as.character(Patient_id),
-    Sex        = factor(Sex),
-    Age        = as.numeric(Age), # already numeric → no-op, kept for clarity
-    Rater      = factor(Rater),
-    Position   = factor(Position),
-    Metric     = factor(Metric),
-    Score      = as.numeric(Score) # already numeric → no-op, kept for clarity
-  )
-```
-
-
-```{r revalue}
-# Revalue metrics
-
-# Revalue sex
-dat_long <- dat_long |>
-  mutate(Sex = case_when(
-    Sex == "Female" ~ "女",
-    Sex == "Male" ~ "男"
-  ))
-
-
-
-
-```
-
-## Merge dat_long and comorbidity score and stratify cci
-
-```{r merge cci}
-dat_long <- dat_long |>
-  left_join(cci_score)
-```
-
-
-```{r}
-dat_long <- dat_long |>
-  mutate(
-    cci_strata = case_when(
-      cci_score <= 1 ~ "≤1",
-      cci_score <= 3 ~ "2-3",
-      cci_score > 3  ~ ">3",
-    ),
-    cci_strata = factor(
-      cci_strata, 
-      levels = c("≤1", "2-3", ">3"), 
-      ordered = TRUE
-    )
-  )
-```
 
 
 ## 目的
@@ -457,7 +407,7 @@ dat_long <- dat_long |>
 
 ```{r Table 1}
 # Calculate Table 1
-table1_df <- dat_long |>
+table1_df <- dat_final |>
   select(Patient_id, Sex, Age, cci_strata) |>
   distinct(Patient_id, .keep_all = TRUE) |>
   tbl_summary(
