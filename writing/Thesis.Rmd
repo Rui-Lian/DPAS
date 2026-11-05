@@ -95,6 +95,9 @@ source(file.path(utils_path, "calculate_metric_icc.R"))
 
 # Function to extract HIS co-morbidity info
 source(file.path(utils_path, "extract_his.R"))
+
+# Function to majority vote
+source(file.path(utils_path, "majority_vote.R"))
 ```
 
 ## 2 Import and clean data
@@ -367,6 +370,14 @@ dpas_6_coltype <- dpas_5_positionCHN |>
   )
 ```
 
+##### Mojority vote function
+
+```{r}
+dpas_7_majorvote <- majority_vote(dpas_6_coltype)
+```
+
+#############checkpoint
+
 ## 3. Data joining
 
 ### 3.1 leftJoin pt_id_3_coltype with charlson index
@@ -463,11 +474,20 @@ knitr::include_graphics("~/DPAS Reproducibility/images/DPAS10Lesions.png")
 ```
 
 
-##################### checkpoint
+# checkpoint
 
-Decision to be made: 
+## Decision to be made: 
 
-Find new way to consolidate the results from four raters. 
+###Find new way to consolidate the results from four raters. 
+
+```{r}
+# each patient, each site and each lesion, four diagnosis from four raters
+# A majority voting scheme: 
+# if 3 out of 4 raters give positive 1, assign the patient with 1
+# Write R code
+
+```
+
 
 ```{r metric by sex,fig.width=7, fig.asp=.618, out.width="100%"}
 score_sex_position_lesion <- dat_long |>
