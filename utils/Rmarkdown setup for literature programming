@@ -1,0 +1,77 @@
+Yes. In an **R Markdown (`.Rmd`)** thesis, the setting you want is:
+
+* **Run all chunks:** yes
+* **Show code:** no
+* **Execute code:** yes
+* **Show plots/tables/results in the knitted Word document:** yes
+
+### 1. Set this globally at the top of your `.Rmd`
+
+Use a setup chunk:
+
+````r
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE,      # don't show R code
+  eval = TRUE,       # still run the code
+  include = TRUE,    # include output
+  results = "markup",
+  fig.show = "asis"
+)
+````
+
+````
+
+The important distinction is:
+
+| Option | Effect |
+|---|---|
+| `echo = FALSE` | **Hide code**, but still run it |
+| `eval = TRUE` | Run the code |
+| `include = TRUE` | Include results/plots |
+| `results = "markup"` | Include textual results |
+| `fig.show = "asis"` | Include generated plots |
+
+### 2. For a plot chunk
+
+You don't need to change anything:
+
+```r
+```{r age-plot}
+plot(dat$Age, dat$total_score)
+````
+
+````
+
+The code will **not appear** in the Word document, but the plot **will appear**.
+
+### 3. For statistical results
+
+For example:
+
+```r
+```{r model}
+model <- lm(total_score ~ Age + Sex, data = dat)
+summary(model)
+````
+
+```
+
+The model will run, and the `summary()` output will appear in the Word document, while the R code itself remains hidden.
+
+### 4. If you want to run everything manually in RStudio
+
+You can use:
+
+**Code → Run Region → Run All**
+
+or the shortcut for **Run All Chunks**.
+
+The key point is that **RStudio's display settings and knitr's output settings are separate**.
+
+If your goal is specifically:
+
+> **RStudio editor: code visible, console/output optional; Word: code hidden, results and figures shown**
+
+then `echo = FALSE` in the global setup chunk is the main setting you need.
+```

@@ -1,0 +1,13 @@
+A namespace convention:
+
+| Prefix   | Meaning                  |
+| -------- | ------------------------ |
+| `raw_`   | imported, untouched data |
+| `clean_` | cleaned/reformatted data |
+| `dat_`   | analytical dataset       |
+| `fit_`   | statistical model        |
+| `tbl_`   | table                    |
+| `fig_`   | figure                   |
+| `icc_`   | ICC results              |
+| `res_`   | statistical results      |
+| `pred_`  | model predictions        |
