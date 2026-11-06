@@ -98,6 +98,9 @@ source(file.path(utils_path, "extract_his.R"))
 
 # Function to majority vote
 source(file.path(utils_path, "majority_vote.R"))
+
+# plot_score_sex_position_lesion()
+source(file.path(utils_path, "plot_score_sex_position_lesion.R"))
 ```
 
 ## 2 Import and clean data
@@ -376,8 +379,6 @@ dpas_6_coltype <- dpas_5_positionCHN |>
 dpas_7_majorvote <- majority_vote(dpas_6_coltype)
 ```
 
-#############checkpoint
-
 ## 3. Data joining
 
 ### 3.1 leftJoin pt_id_3_coltype with charlson index
@@ -386,24 +387,24 @@ dpas_7_majorvote <- majority_vote(dpas_6_coltype)
 # join patient info in pt_id_3_coltype
 # with charlson_score
 # the key is the id_number
-dat_0 <- pt_id_3_coltype |>
+dat_0_charlson <- pt_id_3_coltype |>
   left_join(charlson_score, by = join_by("id_number"))
 ```
 
 ### 3.2 left join dat_0 with dpas_6_coltype
 
 ```{r}
-dat_1 <- dat_0 |>
-  left_join(dpas_6_coltype, by = join_by("Patient_id"))
+dat_1_dpas <- dat_0_charlson |>
+  left_join(dpas_7_majorvote, by = join_by("Patient_id"))
 ```
 
 ### 3.3 Remove patients opd_id and id_number
 
 ```{r}
-dat_2 <- dat_1 |>
+dat_2_dpas <- dat_1_dpas |>
   select(-OPD_id, -id_number)
 
-dat_final <- dat_2
+dat_final <- dat_2_dpas
 ```
 
 
@@ -474,73 +475,44 @@ knitr::include_graphics("~/DPAS Reproducibility/images/DPAS10Lesions.png")
 ```
 
 
-# checkpoint
-
-## Decision to be made: 
-
-###Find new way to consolidate the results from four raters. 
-
 ```{r}
 # each patient, each site and each lesion, four diagnosis from four raters
 # A majority voting scheme: 
 # if 3 out of 4 raters give positive 1, assign the patient with 1
-# Write R code
-
+# Similarly, loose the criteria, 2 of 4, 1 of 4
+# Write R code function majority_vote
 ```
 
+### Three plot 
 
-```{r metric by sex,fig.width=7, fig.asp=.618, out.width="100%"}
-score_sex_position_lesion <- dat_long |>
-  group_by(Sex, Position, Metric) |>
-  summarise(n = sum(Score) / 4) |>
-  mutate(pct = n / 48)
-
-# Remove `皮肤萎缩`
-score_sex_position_metric <- score_sex_position_metric |>
-  filter(!Metric == "皮肤萎缩")
-
-
-g <- ggplot(
-  score_sex_position_metric,
-  aes(x = fct_rev(Metric), y = pct, fill = Sex)
-) +
-  geom_col(position = position_dodge(width = 0.9)) +
-  geom_text(
-    aes(label = percent(pct, accuracy = 1)),
-    position = position_dodge(width = 0.9),
-    hjust = -0.1, # push labels just past the bar tip
-    size = 3
-  ) +
-  scale_fill_discrete_qualitative(palette = "Harmonic") +
-  scale_y_continuous(
-    labels = percent_format(accuracy = 1),
-    breaks = seq(0, 1, 0.2),
-    expand = expansion(mult = c(0, 0.1)), # room for labels at the end
-    limits = c(0, 0.5)
-  ) +
-  labs(
-    title = "不同光老化皮损类型在男女四个部位的发生率",
-    x = "光老化类型",
-    y = "发生率",
-    color = "性别"
-  ) +
-  coord_flip() +
-  facet_grid(. ~ Position) +
-  
-  # Font size will not change with the plot size
-  theme_classic(base_size = 12) +
-  theme(
-    legend.position = "top",
-    axis.line.y = element_blank(),
-    axis.ticks.y = element_blank(),
-    strip.background = element_blank()
-  )
-
-g
+```{r}
+# map: as repeatedly applying a function to each element of a list.
+plots <- purrr::map(
+  rlang::syms(paste0("score", 1:4)),
+  # In R 4.1+, \(x) is shorthand for function(x).'
+  # These two expressions are equivalent:
+  # \(x) x + 1
+  # function(x) {
+  # x + 1
+  # }
+  # Here, x is the function's input argument.
+  # !!x: Inject a captured symbol into a tidy-evaluation expression
+  \(x) plot_score_sex_position_lesion(dat_final, !!x)
+)
 ```
+
+```{r}
+patchwork::wrap_plots(plots, ncol = 4)
+```
+
 
 如上图，毛细血管扩张、色斑，脂溢性角化和深层皱纹和浅表皱纹是常见光老化特征，男女存在不同的皮损类型。
 
+## Check point
+
+The majority vote approach gives quite different picture of the lesion incidence in male and female, especially missing values appear. 
+
+Question: any other way to describe the incidence of lesion by sex without so much lesion. 
 
 ```{r total score}
 dat_total_rater <- dat_long |>
