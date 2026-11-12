@@ -59,13 +59,13 @@ theme_set(
 ```
 
 ```{r Utility function}
-# Path of utils
+# # Path of utils
 utils.path <- "~/DPAS Reproducibility/utils"
-
-# Calculate ICC on the total DPAS score
+# 
+# # Calculate ICC on the total DPAS score
 source(file.path(utils.path, "calculate_total_icc.R"))
-
-# Calculate the ICC on each metric (lesion)
+# 
+# # Calculate the ICC on each metric (lesion)
 source(file.path(utils.path, "calculate_metric_icc.R"))
 ```
 
