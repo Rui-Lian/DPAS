@@ -1,0 +1,15 @@
+                     ┌──────────────┐
+                     │     eval     │
+                     │ Execute?    │
+                     └──────┬───────┘
+                       NO   │   YES
+                            │
+             ┌──────────────┴──────────────┐
+             │                             │
+        code not executed            code executed
+             │                             │
+        ┌────┴────┐                  ┌─────┴─────┐
+        │         │                  │           │
+      echo      include            echo       include
+      show      show?              show       show?
+      code?     chunk?             code?      chunk?
