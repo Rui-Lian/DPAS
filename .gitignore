@@ -11,6 +11,7 @@
 *.xls
 *.Rproj
 bib/
+bib/*.bib
 data/
 docs/
 images/
