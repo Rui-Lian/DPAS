@@ -3,3 +3,15 @@
 .Rhistory
 .RData
 .Ruserdata
+.DS_Store
+.Rproj.user/
+*.key
+*.docx
+*.xlsx
+*.xls
+*.Rproj
+data/
+docs/
+images/
+references/
+reports/
