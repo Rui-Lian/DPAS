@@ -309,7 +309,7 @@ g <- ggplot(
     hjust = -0.1, # push labels just past the bar tip
     size = 3
   ) +
-  scale_fill_discrete_qualitative(palette = "Harmonic") +
+  scale_fill_discrete_sequential(palette = "TealGrn") +
   scale_y_continuous(
     labels = percent_format(accuracy = 1),
     breaks = seq(0, 1, 0.2),
@@ -557,7 +557,7 @@ ggplot(
     limits = c(0, 0.90),
     expand = expansion(mult = c(0.02, 0.02))
   ) +
-  scale_color_discrete_qualitative(palette = "Harmonic") +
+  scale_color_discrete_sequential(palette = "TealGrn") +
   labs(
     x = "发生率",
     y = "DPAS光老化类型",
