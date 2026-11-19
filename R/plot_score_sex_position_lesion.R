@@ -59,5 +59,3 @@ plot_score_sex_position_lesion <- function(data, score_col) {
   
   return(g)
 }
-
-plot_score_sex_position_lesion(data = dat_final, score_col = score1)
