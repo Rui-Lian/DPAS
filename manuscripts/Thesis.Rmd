@@ -427,7 +427,6 @@ dat_final <- dat_2_dpas
 
 ### 1. 患者基线：
 
-
 ```{r Table 1}
 # Calculate Table 1
 table1_df <- dat_final |>
@@ -483,27 +482,46 @@ knitr::include_graphics("~/DPAS Reproducibility/images/DPAS10Lesions.png")
 # Write R code function majority_vote
 ```
 
-### Three plot 
+#### Sensitivity analysis of different criteria of majority vote
 
 ```{r}
-# map: as repeatedly applying a function to each element of a list.
-plots <- purrr::map(
-  rlang::syms(paste0("score", 1:4)),
-  # In R 4.1+, \(x) is shorthand for function(x).'
-  # These two expressions are equivalent:
-  # \(x) x + 1
-  # function(x) {
-  # x + 1
-  # }
-  # Here, x is the function's input argument.
-  # !!x: Inject a captured symbol into a tidy-evaluation expression
-  \(x) plot_score_sex_position_lesion(dat_final, !!x)
-)
+# Raters give different positive/negative diagnosis of a lesion 
+# on a facial site
+# Here use majority vote to summarize different opinions among raters
+# The most conservative diagnosis is to give positive 
+# with just 1 positive diagnosis
+# On the other hand, patients are assigned as positive if only all raters give positive
+# As a result, the prevalence of a lesion will decrease with the stringent majority vote criteria
+# Here is a implement of the changes of prevalence with majority vote criteria
+# In dat_long, the column `score1`, to `score4" are diagnosis based on different escalating criteria
+# A table in which first columns are lesions and the rest four columns are the prevalence of each lesion based on 1-4 majority vote. 
+
+library(dplyr)
+library(tidyr)
+
+prevalence_table <- dat_final %>%
+  group_by(Lesion) %>%
+  summarise(
+    P1 = mean(score1, na.rm = TRUE),
+    P2 = mean(score2, na.rm = TRUE),
+    P3 = mean(score3, na.rm = TRUE),
+    P4 = mean(score4, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    across(starts_with("P"), ~ .x * 100),
+    `Relative change` = (P4 - P1) / P1 * 100
+  ) %>%
+  mutate(
+    across(-Lesion, ~ sprintf("%.1f%%", .x))
+  )
+
+prevalence_table
+
 ```
 
-```{r}
-patchwork::wrap_plots(plots, ncol = 4)
-```
+The threshold sensitivity analysis revealed considerable heterogeneity in lesion-specific susceptibility to inter-rater diagnostic variability. Pigmentation spots and reticular wrinkles exhibited the greatest reductions in prevalence under increasingly stringent agreement criteria, suggesting that their identification was more dependent on individual raters' diagnostic judgments. In contrast, nevi, superficial wrinkles, and telangiectasia showed relatively stable prevalence estimates, indicating greater consistency in lesion identification across raters.
+
 
 
 如上图，毛细血管扩张、色斑，脂溢性角化和深层皱纹和浅表皱纹是常见光老化特征，男女存在不同的皮损类型。
