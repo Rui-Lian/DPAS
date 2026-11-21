@@ -520,13 +520,16 @@ prevalence_table
 
 ```
 
-The threshold sensitivity analysis revealed considerable heterogeneity in lesion-specific susceptibility to inter-rater diagnostic variability. Pigmentation spots and reticular wrinkles exhibited the greatest reductions in prevalence under increasingly stringent agreement criteria, suggesting that their identification was more dependent on individual raters' diagnostic judgments. In contrast, nevi, superficial wrinkles, and telangiectasia showed relatively stable prevalence estimates, indicating greater consistency in lesion identification across raters.
+## Check point
 
+Proof-read and paraphrase the blow paragram
 
-
-如上图，毛细血管扩张、色斑，脂溢性角化和深层皱纹和浅表皱纹是常见光老化特征，男女存在不同的皮损类型。
+*The threshold sensitivity analysis revealed considerable heterogeneity in lesion-specific susceptibility to inter-rater diagnostic variability. Pigmentation spots and reticular wrinkles exhibited the greatest reductions in prevalence under increasingly stringent agreement criteria, suggesting that their identification was more dependent on individual raters' diagnostic judgments. In contrast, nevi, superficial wrinkles, and telangiectasia showed relatively stable prevalence estimates, indicating greater consistency in lesion identification across raters.*
 
 ## Check point
+
+Run Kendall's W test on above result using irr package. 
+
 
 The majority vote approach gives quite different picture of the lesion incidence in male and female, especially missing values appear. 
 
