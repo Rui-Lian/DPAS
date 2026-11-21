@@ -1,14 +1,20 @@
-*.pdf
-.Rproj.user
+# RStudio and R session files
+.Rproj.user/
 .Rhistory
 .RData
 .Ruserdata
+
+# Directories
 data/
 docs/
 images/
 references/
 reports/appendix/
 reports/supplements/
-.Rproj.user/
 manuscripts/appendix/
 manuscripts/supplements/
+
+
+
+
+
