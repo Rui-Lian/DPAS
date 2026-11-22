@@ -1,0 +1,142 @@
+---
+title: "Vignette: Kendall's coefficient of concordance (Kendall's W)"
+author: "Lian Rui"
+date: "2026-11-21"
+output: html_document
+editor_options: 
+  chunk_output_type: inline
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(irr)
+```
+
+## 1. Background
+
+A knowledge backup on Kendall's W test to support the test of majority vote. 
+
+### 1A Majority voting criteria
+
+```{r}
+library(knitr)
+
+criteria <- data.frame(
+  Criterion = c("C1", "C2", "C3", "C4"),
+  Definition = c(
+    "≥1/4 raters positive", # at least 1/4 raters positive
+    "≥2/4 raters positive",
+    "≥3/4 raters positive",
+    "4/4 raters positive"# All four raters positive
+  )
+)
+
+kable(criteria, caption = "Positivity Criteria")
+```
+
+```{r}
+# Dummy data
+# Based on majority vote, incidence of lesion decrease
+# As the criteria go more stringent
+lesion_data <- data.frame(
+  Lesion = c("Telangiectasia", "Superficial wrinkles", "Deep wrinkles", "Yellow papules"),
+  `≥1/4` = c("80%", "75%", "65%", "40%"),
+  `≥2/4` = c("70%", "65%", "55%", "30%"),
+  `≥3/4` = c("60%", "55%", "45%", "20%"),
+  `4/4` = c("45%", "40%", "35%", "10%"),
+  check.names = FALSE
+)
+
+kable(lesion_data, caption = "Lesion Positivity Rates by Criterion")
+```
+
+```{r}
+# A data frame of the ranking of lesions
+# Under different majority voting criteria
+lesion_data <- data.frame(
+  Lesion = c("Telangiectasia", "Superficial wrinkles", "Deep wrinkles", "Yellow papules"),
+  `≥1/4` = c(1, 2, 3, 4),
+  `≥2/4` = c(1, 2, 3, 4),
+  `≥3/4` = c(1, 2, 3, 4),
+  `4/4` = c(1, 2, 3, 4),
+  check.names = FALSE
+)
+
+kable(lesion_data, caption = "Lesion Scores by Criterion")
+```
+
+## 2. Implement Kendall's W manually
+
+### 2A. Original ranking data
+
+```{r}
+
+rank_data2 <- rank_data2 |>
+  mutate(rank_sum = loose + moderate + stringent + strictest)
+```
+
+$n = 4$ subjects (lesions)
+
+$m = 4$ raters (positivity criteria)
+
+### 2B. Calculate the rank sums
+
+Mean rank sum
+
+$$
+\bar{R} = \frac{m(n + 1)}{2}
+$$
+
+Each rater assigns ranks $1 \dots n$, which sum to $n(n = 1)/2$
+
+Across $m$ raters the total is $mn(n + 1)/2$, dividing by $n$ items
+
+gives the mean rank $m(n + 1)/2$
+
+### 2C. Calculate S
+
+$$
+S = \sum_{j = 1}^{n}(R_j - \bar{R})^2
+$$
+
+### 2D. Calculate Kendall's W
+
+$$
+W = \frac{12S}{m^2(n^3 - 1)}
+$$
+
+### 2E. Calculate the chi-square
+
+$$
+\chi^2 = m(n -1)W
+$$
+
+$df = n - 1$
+
+## 3. Implement in irr package
+
+### 3A-Scenario 1 perfect concordance case.
+
+```{r}
+rank_data <- data.frame(
+  loose     = c(1, 2, 3, 4),
+  moderate  = c(1, 2, 3, 4),
+  stringent = c(1, 2, 3, 4),
+  strictest = c(1, 2, 3, 4)
+)
+
+kendall(rank_data, correct = TRUE)
+```
+
+### 3B-Scenario 2 not in concordance
+
+```{r}
+irr::kendall(rank_data2[, c("loose", "moderate", "stringent", "strictest")],
+  correct = TRUE
+)
+```
+
