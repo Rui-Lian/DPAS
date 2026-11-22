@@ -91,7 +91,7 @@ image_path <- file.path(project_path, "images")
 source(file.path(utils_path, "calculate_total_icc.R"))
 
 # Calculate the ICC on each metric (lesion)
-source(file.path(utils_path, "calculate_metric_icc.R"))
+source(file.path(utils_path, "calculate_lesion_icc.R"))
 
 # Function to extract HIS co-morbidity info
 source(file.path(utils_path, "extract_his.R"))
@@ -630,18 +630,95 @@ summary(fit1)
 ##### fit1 age
 
 ```{r}
-# Estimate the Elixhauser slope for each lesion type
+
+# Estimate age slope for each lesion
 age_effect <- emtrends(
   fit1,
   ~ Lesion,
   var = "Age"
-)
+) |>
+  summary(infer = c(TRUE, TRUE)) |>
+  as.data.frame()
 
-# Test whether the CCI slope differs from zero
-summary(
+# Identify confidence interval columns
+lower_col <- intersect(
+  c("lower.CL", "asymp.LCL"),
+  names(age_effect)
+)[1]
+
+upper_col <- intersect(
+  c("upper.CL", "asymp.UCL"),
+  names(age_effect)
+)[1]
+
+# Check confidence interval columns
+if (is.na(lower_col) || is.na(upper_col)) {
+  stop("Confidence interval columns not found. Check names(age_effect).")
+}
+
+# Order lesions by age-associated slope: highest to lowest
+age_order <- age_effect |>
+  dplyr::arrange(dplyr::desc(Age.trend)) |>
+  dplyr::pull(Lesion)
+
+age_effect <- age_effect |>
+  dplyr::mutate(
+    Lesion = factor(Lesion, levels = rev(age_order)),
+    significance = dplyr::if_else(
+      p.value < 0.05,
+      "P < 0.05",
+      "P ≥ 0.05"
+    )
+  )
+
+# Forest plot
+ggplot(
   age_effect,
-  infer = c(TRUE, TRUE)
-)
+  aes(
+    x = Age.trend,
+    y = Lesion,
+    color = significance
+  )
+) +
+  geom_vline(
+    xintercept = 0,
+    color = "grey60",
+    linetype = "dashed",
+    linewidth = 0.5
+  ) +
+  geom_errorbar(
+    aes(
+      xmin = .data[[lower_col]],
+      xmax = .data[[upper_col]]
+    ),
+    orientation = "y",
+    width = 0.15,
+    linewidth = 0.5
+  ) +
+  geom_point(size = 3) +
+  coord_cartesian(xlim = c(-0.15, 0.15)) + 
+  scale_color_manual(
+    values = c(
+      "P < 0.05" = "#A653A7",
+      "P ≥ 0.05" = "grey60"
+    )
+  ) +
+  labs(
+    x = "Age-associated slope (log odds per year)",
+    y = "DPAS光老化类型",
+    color = NULL
+  ) +
+  theme_classic(base_size = 12) +
+  theme(
+    text = element_text(
+      family = "STFangsong",
+      face = "bold"
+    ),
+    legend.position = "top",
+    axis.line.y = element_blank(),
+    axis.ticks.y = element_blank()
+  )
+
 ```
 
 #####fit 1 sex
@@ -667,6 +744,128 @@ summary(
   adjust = "holm"
 )
 ```
+
+
+```{r}
+
+# Estimated probabilities by sex and lesion
+sex_effect <- emmeans(
+  fit1,
+  ~ Sex | Lesion,
+  type = "response"
+) |>
+  as.data.frame()
+
+# Sex comparison within each lesion
+sex_p <- emmeans(
+  fit1,
+  ~ Sex | Lesion
+) |>
+  pairs() |>
+  summary(infer = TRUE) |>
+  as.data.frame() |>
+  dplyr::mutate(
+    p_label = dplyr::case_when(
+      p.value < 0.001 ~ "p < 0.001",
+      TRUE ~ paste0(
+        "p = ",
+        format.pval(p.value, digits = 2, eps = 0.001)
+      )
+    )
+  ) |>
+  dplyr::select(Lesion, p_label)
+
+# Order lesions by mean probability: highest to lowest
+metric_order <- sex_effect |>
+  dplyr::group_by(Lesion) |>
+  dplyr::summarise(
+    mean_prob = mean(prob),
+    .groups = "drop"
+  ) |>
+  dplyr::arrange(dplyr::desc(mean_prob)) |>
+  dplyr::pull(Lesion)
+
+# Reverse factor levels so highest incidence appears at the top
+sex_effect <- sex_effect |>
+  dplyr::mutate(
+    Lesion = factor(Lesion, levels = rev(metric_order))
+  )
+
+sex_p <- sex_p |>
+  dplyr::mutate(
+    Lesion = factor(Lesion, levels = rev(metric_order))
+  )
+
+# Plot
+ggplot(
+  sex_effect,
+  aes(x = prob, y = Lesion, color = Sex)
+) +
+  geom_errorbar(
+    aes(
+      xmin = asymp.LCL,
+      xmax = asymp.UCL
+    ),
+    orientation = "y",
+    position = position_dodge(width = 0.5),
+    height = 0.15,
+    linewidth = 0.4
+  ) +
+  geom_point(
+    aes(shape = Sex),
+    position = position_dodge(width = 0.5),
+    size = 3
+  ) +
+  geom_hline(
+    yintercept = seq(
+      1.5,
+      nlevels(sex_effect$Lesion) - 0.5,
+      by = 1
+    ),
+    color = "grey90",
+    linewidth = 0.3,
+    linetype = "dashed"
+  ) +
+  geom_text(
+    data = sex_p,
+    aes(
+      x = 0.78,
+      y = Lesion,
+      label = p_label
+    ),
+    inherit.aes = FALSE,
+    hjust = 0,
+    color = "black",
+    size = 3.2
+  ) +
+  scale_x_continuous(
+    labels = scales::percent_format(accuracy = 1),
+    limits = c(0, 0.90),
+    expand = expansion(mult = c(0.02, 0.02))
+  ) +
+  scale_color_manual(
+    values = c("#F6BDC3", "#A653A7")
+  ) +
+  labs(
+    x = "发生率",
+    y = "DPAS光老化类型",
+    color = "性别",
+    shape = "性别"
+  ) +
+  theme_classic(base_size = 12) +
+  theme(
+    text = element_text(
+      family = "STFangsong",
+      face = "bold"
+    ),
+    legend.position = "top",
+    axis.line.y = element_blank(),
+    axis.ticks.y = element_blank()
+  )
+
+```
+
+
 
 ##### charlson_score
 
