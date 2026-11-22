@@ -569,7 +569,7 @@ kendall_result <- irr::kendall(prevalence_table_kendall)
 kendall_summary <- data.frame(
   Kendall_W = kendall_result$value,
   Chi_square = kendall_result$statistic,
-  df = nrow(rank_data) - 1,
+  # df = nrow(rank_data) - 1,
   p_value = kendall_result$p.value
 )
 
@@ -582,54 +582,42 @@ Despite progressively stringent positivity criteria, the relative ranking of les
 
 ### 3. DPAS总分的评估重现性
 
-#### A irr package
-
 ```{r}
-icc_total_result <- irr::icc(
-  dat_total_icc[, -1], 
-  model = "twoway", 
-  type = "agreement", 
-  unit = "single"
-)
-
-print(icc_total_result)
-
-```
-#### B psych package
-
-```{r}
-tmp_dpas_psych <- dpas_6_coltype |>
+dat_total_score_icc <- dpas_6_coltype |>
   group_by(Patient_id, Rater) |>
   summarise(Total = sum(Score, na.rm = TRUE)) |>
   ungroup()
 
-calculate_total_icc(tmp_dpas_psych)
+total_icc <- calculate_total_icc(dat_total_score_icc)
+
+total_icc
+
 ```
 
 ### 4. DPAS分项皮损的评估重现性
 
 ```{r}
-metric_icc <- calculate_metric_icc(dat_lesion_icc)
+lesion_icc <- calculate_lesion_icc(dat_lesion_icc)
 
-metric_icc
+lesion_icc
 ```
-
 
 
 ### 5. 混合效应逻辑回归
 
-#### fit1_all_in
+#### fit1
 
 ```{r}
 fit1 <- glmer(
-  Score ~ Metric * (Sex + Age + cci_score) +
-    Position + Rater +
+  score1 ~ Lesion * (Sex + Age + charlson_score) +
+    Position + 
     (1 | Patient_id),
-  data = dat_long,
+  data = dat_final,
   family = binomial(link = "logit"),
   control = glmerControl(optimizer = "bobyqa")
 )
 ```
+
 
 ```{r}
 isSingular(fit1)
@@ -638,104 +626,14 @@ isSingular(fit1)
 ```{r}
 summary(fit1)
 ```
-#### fit1_all_in maxfun 200000
 
-optimizer (bobyqa) convergence code: 1 (bobyqa -- maximum number of function evaluations exceeded), try 
-
-The challenges are complex interaction terms. 
-
-```{r}
-ctrl <- glmerControl(
-  optimizer = "bobyqa",
-  optCtrl = list(maxfun = 200000)
-)
-
-fit1_200000 <- glmer(
-  Score ~ Metric * (Sex + Age + cci_score) +
-    Position + Rater +
-    (1 | Patient_id),
-  data = dat_model,
-  family = binomial(link = "logit"),
-  control = ctrl
-)
-```
-
-```{r}
-isSingular(fit1_200000)
-```
-
-```{r}
-summary(fit1_200000)
-```
-
-#### fit1_all_in nloptwrap
-
-```{r}
-fit1_nloptwrap <- glmer(
-  Score ~ Metric * (Sex + Age + cci_score) +
-    Position + Rater +
-    (1 | Patient_id),
-  data = dat_model,
-  family = binomial(link = "logit"),
-  control = glmerControl(
-    optimizer = "nloptwrap", 
-    calc.derivs = TRUE
-  )
-)
-```
-
-
-```{r}
-isSingular(fit1_nloptwrap)
-```
-
-```{r}
-summary(fit1_nloptwrap)
-```
-##### fit1_nloptwrap diagnosis
-
-```{r}
-fit1_nloptwrap@optinfo$optimizer
-
-fit1_nloptwrap@optinfo$conv$opt
-```
-
-```{r}
-#compare the estimate of fit1_200000 and fit1_nloptwrap
-cbind(
-  bobyqa = fixef(fit1_200000),
-  nloptwrap = fixef(fit1_nloptwrap)
-      )
-
-logLik(fit1_200000)
-logLik(fit1_nloptwrap)
-```
-
-```{r}
-# Compare available optimizers
-af <- allFit(fit1_nloptwrap)
-
-# Summarise optimizer results
-summary(af)
-
-# Extract fixed-effect estimates from successful fits
-af_summary <- summary(af)
-
-af_summary$fixef
-af_summary$llik
-af_summary$sdcor
-af_summary$which.OK
-```
-
-##### fit1_all_in nloptwrap post hoc
-
-###### Age
+##### fit1 age
 
 ```{r}
 # Estimate the Elixhauser slope for each lesion type
 age_effect <- emtrends(
-  fit1_nloptwrap,
-  ~ Metric,
+  fit1,
+  ~ Lesion,
   var = "Age"
 )
 
@@ -746,13 +644,13 @@ summary(
 )
 ```
 
-###### Sex
+#####fit 1 sex
 
 ```{r}
 # Estimate diabetes effects separately for each lesion
 sex_effect <- emmeans(
-  fit1_nloptwrap,
-  ~ Sex | Metric
+  fit1,
+  ~ Sex | Lesion
 )
 
 # Compare diabetes = 1 with diabetes = 0 within each lesion
@@ -770,15 +668,14 @@ summary(
 )
 ```
 
-
-###### cci_score
+##### charlson_score
 
 ```{r}
 # Estimate the Elixhauser slope for each lesion type
 cci_effect <- emtrends(
-  fit1_nloptwrap,
-  ~ Metric,
-  var = "cci_score"
+  fit1,
+  ~ Lesion,
+  var = "charlson_score"
 )
 
 # Test whether the CCI slope differs from zero
@@ -787,4 +684,7 @@ summary(
   infer = c(TRUE, TRUE)
 )
 ```
+
+
+
 
