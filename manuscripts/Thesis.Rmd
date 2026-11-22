@@ -464,7 +464,7 @@ table1_df |>
 
 \newpage
 
-### 2. 不同光老化皮损的发生特征
+### 2. 不同光老化皮损的发生特征以及多人评估的敏感度分析
 
 DPAS量表的常见皮损见下图：
 
@@ -482,7 +482,6 @@ knitr::include_graphics("~/DPAS Reproducibility/images/DPAS10Lesions.png")
 # Write R code function majority_vote
 ```
 
-#### Sensitivity analysis of different criteria of majority vote
 
 ```{r}
 # Raters give different positive/negative diagnosis of a lesion 
@@ -520,20 +519,37 @@ prevalence_table
 
 ```
 
-## Check point
-
-Proof-read and paraphrase the blow paragram
+## Check point Proof-read and paraphrase the blow paragram
 
 *The threshold sensitivity analysis revealed considerable heterogeneity in lesion-specific susceptibility to inter-rater diagnostic variability. Pigmentation spots and reticular wrinkles exhibited the greatest reductions in prevalence under increasingly stringent agreement criteria, suggesting that their identification was more dependent on individual raters' diagnostic judgments. In contrast, nevi, superficial wrinkles, and telangiectasia showed relatively stable prevalence estimates, indicating greater consistency in lesion identification across raters.*
 
-## Check point
+## Check point Run Kendall's W test on above result using irr package. 
 
-Run Kendall's W test on above result using irr package. 
+```{r}
+# Prevalence table gives the prevalence of photo aging lesions
+# Under different majority vote criteria
+# Kendall's W test to test if the ranking of lesions changes
+# with voting criteria. 
+prevalence_table_kendall <- prevalence_table |>
+  select(starts_with("P"))
 
+kendall_result <- irr::kendall(prevalence_table_kendall)
 
-The majority vote approach gives quite different picture of the lesion incidence in male and female, especially missing values appear. 
+kendall_summary <- data.frame(
+  Kendall_W = kendall_result$value,
+  Chi_square = kendall_result$statistic,
+  df = nrow(rank_data) - 1,
+  p_value = kendall_result$p.value
+)
 
-Question: any other way to describe the incidence of lesion by sex without so much lesion. 
+kendall_summary
+```
+
+**AI generated interpretation**
+
+Despite progressively stringent positivity criteria, the relative ranking of lesion prevalence remained highly consistent. Kendall's coefficient of concordance demonstrated near-perfect agreement across the four criteria (W = 0.997, p < 0.001).
+
+### 3. DPAS总分的评估重现性
 
 ```{r total score}
 dat_total_rater <- dat_long |>
@@ -550,7 +566,7 @@ dat_total_rater <- dat_long |>
 
 \newpage
 
-### 3. DPAS总分的评估重现性
+
 
 
 ```{r total icc}
