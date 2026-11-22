@@ -373,7 +373,39 @@ dpas_6_coltype <- dpas_5_positionCHN |>
   )
 ```
 
-##### Mojority vote function
+##### 2.3.6.1 Create dataset for total score ICC
+
+```{r}
+# Calculate the total score of each patients by each rater
+dat_total_icc <- dpas_6_coltype |>
+  group_by(Patient_id, Rater) |>
+  summarise(Total = sum(Score, na.rm = TRUE)) |>
+  ungroup()
+
+# Pivotal wider to accommodate the function
+dat_total_icc <- dat_total_icc |>
+  pivot_wider(
+    names_from = Rater,
+    values_from = Total,
+    names_prefix = "Rater_"
+  ) |>
+  select(starts_with("Rater_"))
+```
+
+##### 2.3.6.2 Create dataset for lesion score ICC
+
+```{r}
+dat_lesion_icc <- dpas_6_coltype |>
+  group_by(Patient_id, Rater, Lesion) |>
+  summarise(
+    Total = sum(Score, na.rm = TRUE)
+  ) |>
+  ungroup() |>
+  filter(!Lesion %in% "皮肤萎缩")
+```
+
+
+##### Majority vote function
 
 ```{r}
 dpas_7_majorvote <- majority_vote(dpas_6_coltype)
@@ -406,7 +438,6 @@ dat_2_dpas <- dat_1_dpas |>
 
 dat_final <- dat_2_dpas
 ```
-
 
 
 ## 目的
@@ -547,100 +578,43 @@ kendall_summary
 
 **AI generated interpretation**
 
-Despite progressively stringent positivity criteria, the relative ranking of lesion prevalence remained highly consistent. Kendall's coefficient of concordance demonstrated near-perfect agreement across the four criteria (W = 0.997, p < 0.001).
+Despite progressively stringent positivity criteria, the relative ranking of lesion prevalence remained highly consistent. Kendall's coefficient of concordance demonstrated near-perfect agreement across the four criteria (W = 0.863, p < 0.001).
 
 ### 3. DPAS总分的评估重现性
 
-```{r total score}
-dat_total_rater <- dat_long |>
-  group_by(Patient_id, Rater, Sex, Age) |>
-  summarise(
-    Total = sum(Score, na.rm = TRUE),
-    
-    # .groups gives summarise() explicit control 
-    # over the grouping structure that will be passed to subsequent dplyr operations.
-    .groups = "drop"
-  )
+#### A irr package
+
+```{r}
+icc_total_result <- irr::icc(
+  dat_total_icc[, -1], 
+  model = "twoway", 
+  type = "agreement", 
+  unit = "single"
+)
+
+print(icc_total_result)
+
+```
+#### B psych package
+
+```{r}
+tmp_dpas_psych <- dpas_6_coltype |>
+  group_by(Patient_id, Rater) |>
+  summarise(Total = sum(Score, na.rm = TRUE)) |>
+  ungroup()
+
+calculate_total_icc(tmp_dpas_psych)
+```
+
+### 4. DPAS分项皮损的评估重现性
+
+```{r}
+metric_icc <- calculate_metric_icc(dat_lesion_icc)
+
+metric_icc
 ```
 
 
-\newpage
-
-
-
-
-```{r total icc}
-icc_total <- calculate_total_icc(dat_total_rater)
-
-icc_result <- as.data.frame(icc_total$results)
-
-icc_result <- icc_result |>
-  filter(type == "ICC2") %>%
-  select(ICC, p, `lower bound`, `upper bound`)
-
-icc_result$p <- "<0.001"
-
-
-icc_result |>
-  flextable() |>
-  align(align = "center", part = "all") |>
-  hline(
-    i = nrow(icc_result),
-    border = fp_border(width = 2),
-    part = "body"
-  ) |>
-  set_caption("四个评估人对患者DPAS总分的ICC可靠性") |>
-  autofit()
-```
-
-
-ICC(2,1) = 0.945，表明不同评估人在DPAS总分上高度一致，约94.5%的相对评分变异反映患者间的差异，而与测量误差和评估人差异有关的变异仅为5.5%。
-
-### 4.患者分项皮损的评估重现性
-
-
-```{r metric specific score}
-dat_metric_specific_rater <- dat_long |>
-  group_by(Patient_id, Rater, Sex, Age, Metric) |>
-  summarise(
-    Total = sum(Score, na.rm = TRUE),
-    .groups = "drop"
-  )
-```
-
-
-```{r metric icc}
-icc_metric <- calculate_metric_icc(dat_metric_specific_rater)
-
-icc_metric$P <- "P < 0.001"
-
-# Remove `皮肤萎缩`
-icc_metric <- icc_metric |>
-  filter(!Metric %in% "皮肤萎缩")
-
-# Remove the F, df1, df2 value in icc_metric
-icc_metric <- icc_metric |>
-  select(-`F`, -df1, -df2)
-
-icc_metric |>
-  flextable() |>
-  align(align = "center", part = "all") |>
-  border_remove() |>
-  hline(
-    i = 1,
-    border = officer::fp_border(width = 1),
-    part = "header"
-  ) |>
-  hline_bottom(
-    border = officer::fp_border(width = 2),
-    part = "all"
-  ) |>
-  set_caption("四个评估人对患者分项皮损的ICC可靠性") |>
-  autofit()
-```
-
-
-同上，针对不同的光老化皮损类型，不同评估人之间的评估高度重现。
 
 ### 5. 混合效应逻辑回归
 

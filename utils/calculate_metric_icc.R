@@ -1,25 +1,37 @@
-calculate_metric_icc <- function(data) {
+
+calculate_metric_icc <- function(df) {
   
-  metrics <- sort(unique(data$Metric))
+  metrics <- sort(unique(df$Metric))
   
   icc_results <- purrr::map_dfr(metrics, function(m) {
     
     # Patient × Rater data for this metric
-    icc_data <- data |>
+    icc_data <- df |>
       filter(Metric == m) |>
       select(Patient_id, Rater, Total) |>
       pivot_wider(
         names_from = Rater,
-        values_from = Total
+        values_from = Total,
+        names_prefix = "Rater_"
       ) |>
-      select(-Patient_id)
+      arrange(Patient_id) |>
+      select(-Patient_id) |>
+      as.data.frame()
+    
+    # Ensure numeric data
+    icc_data[] <- lapply(icc_data, as.numeric)
+    
+    # Check completeness
+    if (anyNA(icc_data)) {
+      stop(paste("Missing scores for metric:", m))
+    }
     
     # Calculate ICC
-    icc <- psych::ICC(icc_data)$results[
-      "Single_random_raters",
-    ]
+    icc <- psych::ICC(icc_data)$results
     
-    # Extract numeric values
+    icc <- icc["Single_random_raters", ]
+    
+    # Extract results
     tibble(
       Metric = m,
       ICC2_1 = icc[["ICC"]],
@@ -34,3 +46,4 @@ calculate_metric_icc <- function(data) {
   
   icc_results
 }
+
