@@ -12,13 +12,12 @@ bibliography: references.bib
 csl: ama.csl
 ---
 
-Inter-Rater Reliability of the Dermoscopic Photoaging Scale and Lesion-Specific Associations With Patient Characteristics
-
 ## 1 Setup
 
 ### 1.1 knitr
 
 ```{r setup, include=FALSE}
+# knitr setup
 knitr::opts_chunk$set(
   echo = FALSE, # hide R source code from the final document, but run it
   eval = TRUE, # Actually execute the code
@@ -35,7 +34,7 @@ knitr::opts_chunk$set(
 
 ### 1.2 Arguments
 
-```{r}
+```{r arguments}
 # Numeric digits
 options(digits = 3)
 ```
@@ -61,6 +60,7 @@ library(scales)
 library(flextable)
 library(officer)
 library(comorbidity)
+library(here)
 ```
 
 ### 1.4 Themes
@@ -75,12 +75,12 @@ theme_set(
 
 ```{r}
 # Project path
-project_path <- "~/DPAS Reproducibility"
+project_path <- here::here()
 
 # data, utils, images path
-data_path <- file.path(project_path, "data")
-utils_path <- file.path(project_path, "utils")
-image_path <- file.path(project_path, "images")
+data_path  <- here::here("data")
+utils_path <- here::here("utils")
+image_path <- here::here("images")
 ```
 
 ### 1.6 Utility functions
@@ -133,7 +133,7 @@ pt_id_1_colname <- pt_id_0 |>
 # pt_id_2_colvalue: revalue column values
 pt_id_2_colvalue <- pt_id_1_colname |>
   mutate(Sex = case_when(
-    Sex == "男" ~ "Male", 
+    Sex == "男" ~ "Male",
     Sex == "女" ~ "Female"
   ))
 ```
@@ -144,11 +144,11 @@ pt_id_2_colvalue <- pt_id_1_colname |>
 # pt_id_3_coltype: Column types
 pt_id_3_coltype <- pt_id_2_colvalue |>
   mutate(
-    Patient_id = as.character(Patient_id), 
-    Name = as.character(Name), 
-    Sex = as.factor(Sex), 
-    Age = as.numeric(Age), 
-    id_number = as.character(id_number), 
+    Patient_id = as.character(Patient_id),
+    Name = as.character(Name),
+    Sex = as.factor(Sex),
+    Age = as.numeric(Age),
+    id_number = as.character(id_number),
     OPD_id = as.character(OPD_id)
   )
 ```
@@ -158,13 +158,13 @@ pt_id_3_coltype <- pt_id_2_colvalue |>
 #### 2.2.1 Read icd10_chn
 
 ```{r Read the ICD10_CHN}
-icd10_chn<- read_excel("~/DPAS Reproducibility/data/ICD10_CHN.xlsx")
+icd10_chn <- read_excel("~/DPAS Reproducibility/data/ICD10_CHN.xlsx")
 ```
 
 #### 2.2.2 Extract IPD HIS
 
 ```{r}
-# extract IPD his comorbidity 
+# extract IPD his comorbidity
 ipd_his <- extract_his(file_name = "IPD_HIS.xlsx", source = "ipd")
 ```
 
@@ -188,17 +188,19 @@ his <- rbind(ipd_his, opd_his)
 
 ```{r charlson and elixhauser comorbidity index}
 # charlson
-charlson <- comorbidity(x = his, 
-                        id = "id_number", 
-                        code = "raw_icd", 
-                        map = "charlson_icd10_quan", 
-                        assign0 = TRUE) 
+charlson <- comorbidity(
+  x = his,
+  id = "id_number",
+  code = "raw_icd",
+  map = "charlson_icd10_quan",
+  assign0 = TRUE
+)
 
 charlson_score <- score(charlson, weights = "charlson", assign0 = TRUE)
 
 charlson_score <- data.frame(
-   id_number = charlson$id_number, 
-   charlson_score = charlson_score
+  id_number = charlson$id_number,
+  charlson_score = charlson_score
 )
 
 # Charlson index strata
@@ -207,8 +209,8 @@ charlson_score <- charlson_score |>
     cci_strata = case_when(
       charlson_score <= 1 ~ "≤1",
       charlson_score <= 3 ~ "2-3",
-      charlson_score > 3  ~ ">3"
-)
+      charlson_score > 3 ~ ">3"
+    )
   )
 ```
 
@@ -216,7 +218,7 @@ charlson_score <- charlson_score |>
 ##### 2.2.5.2 Elixhauser Comorbodity Index
 
 ```{r}
-# elixhauser 
+# elixhauser
 elixhauser <- comorbidity(
   x = his,
   id = "id_number",
@@ -234,7 +236,7 @@ elixhauser_score <- score(
 
 # Inspect the results
 elixhauser_score <- data.frame(
-  Patient_id = elixhauser$id_number, 
+  Patient_id = elixhauser$id_number,
   elixhauser_score = elixhauser_score
 )
 ```
@@ -262,20 +264,17 @@ dpas_1_colname <- dpas_0 |>
     # dplyr/purrr accept one-sided function, function has only the RHS
     # `~...` R shorthand for an anonymous function
     # `~` means: Define a function, and use `.x` as its input
-
     # `.x` represents the current input value passed to the function
     # Equivalent to:
     # function(.x) {
     #   paste0("Forehead", sub("^额", "", .x))
     # }
-
     # Inside the paste0:
     # for the current input column name .x
     # find 额 at the beginning of the string (^额)
     # and replace it with nothing ("")
     # leaving the rest of the column name unchanged.
     ~ paste0("Forehead", sub("^额", "", .x)),
-
     # select column start with `额`
     # followed by one or more digits
     matches("^额\\d+$")
@@ -367,8 +366,8 @@ dpas_5_positionCHN <- dpas_4_lesionCHN |>
 ```{r}
 dpas_6_coltype <- dpas_5_positionCHN |>
   mutate(
-    Rater = as.factor(Rater), 
-    Position = as.factor(Position), 
+    Rater = as.factor(Rater),
+    Position = as.factor(Position),
     Lesion = as.factor(Lesion)
   )
 ```
@@ -499,32 +498,29 @@ table1_df |>
 
 DPAS量表的常见皮损见下图：
 
-
 ```{r include lesion image}
 knitr::include_graphics("~/DPAS Reproducibility/images/DPAS10Lesions.png")
 ```
 
-
 ```{r}
 # each patient, each site and each lesion, four diagnosis from four raters
-# A majority voting scheme: 
+# A majority voting scheme:
 # if 3 out of 4 raters give positive 1, assign the patient with 1
 # Similarly, loose the criteria, 2 of 4, 1 of 4
 # Write R code function majority_vote
 ```
 
-
 ```{r}
-# Raters give different positive/negative diagnosis of a lesion 
+# Raters give different positive/negative diagnosis of a lesion
 # on a facial site
 # Here use majority vote to summarize different opinions among raters
-# The most conservative diagnosis is to give positive 
+# The most conservative diagnosis is to give positive
 # with just 1 positive diagnosis
 # On the other hand, patients are assigned as positive if only all raters give positive
 # As a result, the prevalence of a lesion will decrease with the stringent majority vote criteria
 # Here is a implement of the changes of prevalence with majority vote criteria
 # In dat_long, the column `score1`, to `score4" are diagnosis based on different escalating criteria
-# A table in which first columns are lesions and the rest four columns are the prevalence of each lesion based on 1-4 majority vote. 
+# A table in which first columns are lesions and the rest four columns are the prevalence of each lesion based on 1-4 majority vote.
 
 library(dplyr)
 library(tidyr)
@@ -547,7 +543,6 @@ prevalence_table <- dat_final %>%
   )
 
 prevalence_table
-
 ```
 
 ## Check point Proof-read and paraphrase the blow paragram
@@ -560,7 +555,7 @@ prevalence_table
 # Prevalence table gives the prevalence of photo aging lesions
 # Under different majority vote criteria
 # Kendall's W test to test if the ranking of lesions changes
-# with voting criteria. 
+# with voting criteria.
 prevalence_table_kendall <- prevalence_table |>
   select(starts_with("P"))
 
@@ -591,7 +586,6 @@ dat_total_score_icc <- dpas_6_coltype |>
 total_icc <- calculate_total_icc(dat_total_score_icc)
 
 total_icc
-
 ```
 
 ### 4. DPAS分项皮损的评估重现性
@@ -602,7 +596,6 @@ lesion_icc <- calculate_lesion_icc(dat_lesion_icc)
 lesion_icc
 ```
 
-
 ### 5. 混合效应逻辑回归
 
 #### fit1
@@ -610,7 +603,7 @@ lesion_icc
 ```{r}
 fit1 <- glmer(
   score1 ~ Lesion * (Sex + Age + charlson_score) +
-    Position + 
+    Position +
     (1 | Patient_id),
   data = dat_final,
   family = binomial(link = "logit"),
@@ -630,11 +623,10 @@ summary(fit1)
 ##### fit1 age
 
 ```{r}
-
 # Estimate age slope for each lesion
 age_effect <- emtrends(
   fit1,
-  ~ Lesion,
+  ~Lesion,
   var = "Age"
 ) |>
   summary(infer = c(TRUE, TRUE)) |>
@@ -696,7 +688,7 @@ ggplot(
     linewidth = 0.5
   ) +
   geom_point(size = 3) +
-  coord_cartesian(xlim = c(-0.15, 0.15)) + 
+  coord_cartesian(xlim = c(-0.15, 0.15)) +
   scale_color_manual(
     values = c(
       "P < 0.05" = "#A653A7",
@@ -718,7 +710,6 @@ ggplot(
     axis.line.y = element_blank(),
     axis.ticks.y = element_blank()
   )
-
 ```
 
 #####fit 1 sex
@@ -747,7 +738,6 @@ summary(
 
 
 ```{r}
-
 # Estimated probabilities by sex and lesion
 sex_effect <- emmeans(
   fit1,
@@ -862,18 +852,16 @@ ggplot(
     axis.line.y = element_blank(),
     axis.ticks.y = element_blank()
   )
-
 ```
 
 
-
-##### charlson_score
+##### fit 1 charlson_score
 
 ```{r}
 # Estimate the Elixhauser slope for each lesion type
 cci_effect <- emtrends(
   fit1,
-  ~ Lesion,
+  ~Lesion,
   var = "charlson_score"
 )
 
@@ -883,7 +871,3 @@ summary(
   infer = c(TRUE, TRUE)
 )
 ```
-
-
-
-
