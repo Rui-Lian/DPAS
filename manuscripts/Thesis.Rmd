@@ -3,13 +3,11 @@ title: "皮肤镜下光老化量表的重现性研究"
 author: 
   "连慧妍 李艳娇 李彤 王岩 陶思睿"
 output:
-  pdf_document: default
-  word_document: default
   html_document: default
+  word_document: default
+  pdf_document: default
 editor_options:
   chunk_output_type: inline
-bibliography: references.bib
-csl: ama.csl
 ---
 
 ## 1 Setup
@@ -35,7 +33,7 @@ knitr::opts_chunk$set(
 ### 1.2 Arguments
 
 ```{r arguments}
-# Numeric digits
+# Numeric digits to dicimal 3. 
 options(digits = 3)
 ```
 
@@ -45,12 +43,10 @@ options(digits = 3)
 library(tidyverse)
 library(readxl)
 library(tidyr)
-library(psych) # ICC
+library(psych) # Calculate intraclass correlation coefficient, ICC
 library(colorspace)
 library(showtext)
 showtext_auto()
-library(GWalkR) # Tabuleu like, TODO: further explore
-library(DataExplorer)
 library(gtsummary) # Table 1
 library(kableExtra)
 library(lmerTest)
@@ -73,10 +69,7 @@ theme_set(
 
 ### 1.5 Path
 
-```{r}
-# Project path
-project_path <- here::here()
-
+```{r define path}
 # data, utils, images path
 data_path  <- here::here("data")
 utils_path <- here::here("utils")
@@ -85,36 +78,35 @@ image_path <- here::here("images")
 
 ### 1.6 Utility functions
 
-```{r Utility function}
-# Path of utils
+```{r source utility function}
 # Calculate ICC on the total DPAS score
-source(file.path(utils_path, "calculate_total_icc.R"))
+source(here("utils", "calculate_total_icc.R"))
 
-# Calculate the ICC on each metric (lesion)
-source(file.path(utils_path, "calculate_lesion_icc.R"))
+# Calculate ICC on each lesion
+source(here("utils", "calculate_lesion_icc.R"))
 
-# Function to extract HIS co-morbidity info
-source(file.path(utils_path, "extract_his.R"))
+# Extract HIS comorbidity information
+source(here("utils", "extract_his.R"))
 
-# Function to majority vote
-source(file.path(utils_path, "majority_vote.R"))
+# Majority vote
+source(here("utils", "majority_vote.R"))
 
-# plot_score_sex_position_lesion()
-source(file.path(utils_path, "plot_score_sex_position_lesion.R"))
+# Plot scores by sex, position, and lesion
+source(here("utils", "plot_score_sex_position_lesion.R"))
 ```
 
 ## 2 Import and clean data
 
 ### 2.1 patient id info
 
-```{r}
+```{r read pt info}
 # pt_id_0: raw patient info
-pt_id_0 <- read_excel(file.path(data_path, "皮肤科48例信息1.xls"))
+pt_id_0 <- read_excel(here("data", "皮肤科48例信息1.xls"))
 ```
 
 #### 2.1.1 Column names to English
 
-```{r}
+```{r change pt info to Eng}
 # pt_id_1_colname: Change column names to English
 pt_id_1_colname <- pt_id_0 |>
   rename(
@@ -129,7 +121,7 @@ pt_id_1_colname <- pt_id_0 |>
 
 #### 2.1.2 Column re-value
 
-```{r}
+```{r revalue pt info sex value}
 # pt_id_2_colvalue: revalue column values
 pt_id_2_colvalue <- pt_id_1_colname |>
   mutate(Sex = case_when(
@@ -140,7 +132,7 @@ pt_id_2_colvalue <- pt_id_1_colname |>
 
 #### 2.1.3 Column type
 
-```{r}
+```{r pt info column type}
 # pt_id_3_coltype: Column types
 pt_id_3_coltype <- pt_id_2_colvalue |>
   mutate(
@@ -163,21 +155,21 @@ icd10_chn <- read_excel("~/DPAS Reproducibility/data/ICD10_CHN.xlsx")
 
 #### 2.2.2 Extract IPD HIS
 
-```{r}
+```{r extract IPD his info}
 # extract IPD his comorbidity
 ipd_his <- extract_his(file_name = "IPD_HIS.xlsx", source = "ipd")
 ```
 
 #### 2.2.3 Extract OPD HIS
 
-```{r}
+```{r extract opd his info}
 # extract opd his comorbidity
 opd_his <- extract_his(file_name = "OPD_HIS.xlsx", source = "opd")
 ```
 
 #### 2.2.4 Combine OPD and IPD HIS
 
-```{r}
+```{r his info combine}
 # combine ipd and opd
 his <- rbind(ipd_his, opd_his)
 ```
@@ -186,7 +178,7 @@ his <- rbind(ipd_his, opd_his)
 
 ##### 2.2.5.1 Charlson Comorbidity Index (CCI)
 
-```{r charlson and elixhauser comorbidity index}
+```{r calculate charlson comorbidity index}
 # charlson
 charlson <- comorbidity(
   x = his,
@@ -217,7 +209,7 @@ charlson_score <- charlson_score |>
 
 ##### 2.2.5.2 Elixhauser Comorbodity Index
 
-```{r}
+```{r elixhauser comorbidity index}
 # elixhauser
 elixhauser <- comorbidity(
   x = his,
@@ -303,8 +295,7 @@ dpas_2_colvalue <- dpas_1_colname |>
 
 #### 2.3.3 Long format
 
-```{r}
-# Step 3. Long format
+```{r convert to long format}
 # Long format
 dpas_3_long <- dpas_2_colvalue |>
   pivot_longer(
@@ -329,8 +320,7 @@ dpas_3_long <- dpas_2_colvalue |>
 
 #### 2.3.4 Lesion id to lesion names in Chinese
 
-```{r}
-# Step 4: Lesion id to lesion names in Chinese
+```{r Step 4: Lesion id to lesion names in Chinese}
 dpas_4_lesionCHN <- dpas_3_long |>
   mutate(Lesion = case_when(
     Lesion == "1" ~ "皮肤暗黄",
@@ -349,8 +339,8 @@ dpas_4_lesionCHN <- dpas_3_long |>
 
 #### 2.3.5 Position to CHN names
 
-```{r}
-# Step 5: four position in English
+```{r Step 5: four position in English}
+
 # Revalue the 4 positions
 dpas_5_positionCHN <- dpas_4_lesionCHN |>
   mutate(Position = case_when(
@@ -854,7 +844,6 @@ ggplot(
   )
 ```
 
-
 ##### fit 1 charlson_score
 
 ```{r}
@@ -871,3 +860,34 @@ summary(
   infer = c(TRUE, TRUE)
 )
 ```
+
+### fit 2
+
+```{r}
+fit2 <- glmer(
+  score1 ~ Lesion * (Sex + Age) +
+    Position +
+    (1 | Patient_id),
+  data = dat_final,
+  family = binomial(link = "logit"),
+  control = glmerControl(optimizer = "bobyqa")
+)
+```
+
+```{r}
+isSingular(fit2)
+
+# Convergence warnings
+fit2@optinfo$conv$lme4$messages
+
+# Optimizer information
+fit2@optinfo$optimizer
+
+# Check whether the Hessian is positive definite
+fit2@optinfo$conv
+```
+
+```{r}
+summary(fit2)
+```
+
